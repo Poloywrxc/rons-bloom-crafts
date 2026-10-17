@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Hide scrollbar for Chrome, Safari, Edge, Firefox */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Floating Centerpiece Card Levitation Keyframes */
+@keyframes float-center {
+  0%, 100% {
+    transform: translateY(-22px) scale(1.05);
+  }
+  50% {
+    transform: translateY(-28px) scale(1.05);
+  }
+}
+
+@keyframes float-center-mobile {
+  0%, 100% {
+    transform: translateY(-14px) scale(1.03);
+  }
+  50% {
+    transform: translateY(-19px) scale(1.03);
+  }
+}
+
+.floating-center-card {
+  animation: float-center 4s ease-in-out infinite;
+}
+
+@media (max-width: 640px) {
+  .floating-center-card {
+    animation: float-center-mobile 4s ease-in-out infinite;
+  }
+}
+
+.floating-center-card:hover {
+  animation-play-state: paused;
+}
+
+/* Login Required Modal Animations */
+@keyframes modal-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modal-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.modal-backdrop-in {
+  animation: modal-backdrop-in 0.2s ease-out both;
+}
+
+.modal-pop-in {
+  animation: modal-pop-in 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
