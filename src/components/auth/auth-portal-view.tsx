@@ -35,6 +35,8 @@ export function AuthPortalView({
   const [resetSent, setResetSent] = useState(false);
   const [confirmationSent, setConfirmationSent] = useState(false);
 
+  const [isEnteringAccount, setIsEnteringAccount] = useState(false);
+
   const switchMode = (mode: 'login' | 'register' | 'forgot') => {
     setAuthMode(mode);
     setErrorMessage(null);
@@ -49,6 +51,8 @@ export function AuthPortalView({
     setErrorMessage(null);
     setSuccessMessage(null);
     setIsLoading(true);
+
+    let willEnterAccount = false;
 
     try {
       if (authMode === 'forgot') {
@@ -89,8 +93,23 @@ export function AuthPortalView({
           setConfirmationSent(true);
           setSuccessMessage(`We have sent a verification email to ${email}. Please confirm your email to activate your account.`);
         } else if (res.data?.user) {
-          setCurrentUser(res.data.user);
-          onCompleteLogin(res.data.user.role, res.data.user);
+          const activeUser = res.data.user;
+          setCurrentUser(activeUser);
+          try {
+            localStorage.setItem('bloom_crafts_user', JSON.stringify(activeUser));
+            sessionStorage.setItem(
+              'bloom_welcome_user',
+              JSON.stringify({
+                name: activeUser.name || 'Patron',
+                role: activeUser.role
+              })
+            );
+          } catch {}
+          willEnterAccount = true;
+          setIsEnteringAccount(true);
+          setTimeout(() => {
+            onCompleteLogin(activeUser.role, activeUser);
+          }, 1100);
         }
         return;
       }
@@ -102,14 +121,53 @@ export function AuthPortalView({
         return;
       }
 
-      setCurrentUser(res.data.user);
-      onCompleteLogin(res.data.user.role, res.data.user);
+      const activeUser = res.data.user;
+      setCurrentUser(activeUser);
+      try {
+        localStorage.setItem('bloom_crafts_user', JSON.stringify(activeUser));
+        sessionStorage.setItem(
+          'bloom_welcome_user',
+          JSON.stringify({
+            name: activeUser.name || 'Patron',
+            role: activeUser.role
+          })
+        );
+      } catch {}
+
+      willEnterAccount = true;
+      setIsEnteringAccount(true);
+      setTimeout(() => {
+        onCompleteLogin(activeUser.role, activeUser);
+      }, 1100);
     } catch (err: any) {
       setErrorMessage(err?.message || 'An unexpected connection error occurred.');
     } finally {
-      setIsLoading(false);
+      if (!willEnterAccount) {
+        setIsLoading(false);
+      }
     }
   };
+
+  if (isEnteringAccount) {
+    return (
+      <div className="fixed inset-0 z-50 bg-[#FAF7F2] flex flex-col items-center justify-center p-6 space-y-4 animate-in fade-in duration-200">
+        <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-full overflow-hidden shadow-xl border-2 border-stone-200/80 bg-white flex items-center justify-center p-1.5 animate-pulse">
+          <Image
+            src="/logo.png"
+            alt="Ron's Bloom Crafts"
+            width={128}
+            height={128}
+            className="w-full h-full object-contain"
+            priority
+          />
+        </div>
+        <div className="flex items-center space-x-2.5 text-stone-700 text-sm font-medium">
+          <Loader2 className="w-4 h-4 animate-spin text-[#2D5A43]" />
+          <span>Entering Ron’s Bloom Crafts...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[70vh] flex items-center justify-center px-4 py-8 sm:py-12">
@@ -281,11 +339,7 @@ export function AuthPortalView({
             )}
 
             {authMode === 'login' && (
-              <div className="flex justify-between items-center text-[11px] text-stone-500">
-                <label className="flex items-center space-x-1 cursor-pointer">
-                  <input type="checkbox" defaultChecked className="rounded text-[#2D5A43]" />
-                  <span>Remember me</span>
-                </label>
+              <div className="flex justify-end items-center text-[11px] text-stone-500">
                 <button
                   type="button"
                   onClick={() => switchMode('forgot')}

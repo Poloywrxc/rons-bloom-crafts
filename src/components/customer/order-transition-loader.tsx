@@ -73,7 +73,7 @@ export function OrderTransitionLoader({
       case 'securing':
         return 'Locking in hand-tied stems and personalized calligraphy note...';
       case 'confirmed':
-        return `Order ${orderId ? `#${orderId}` : 'is saved'}! Preparing your live delivery journey...`;
+        return `Order ${orderId ? `#${orderId}` : 'is reserved'}! An official invoice and order receipt have been dispatched to your email.`;
       case 'navigating':
         return 'Taking you directly to your Customer Orders dashboard...';
     }

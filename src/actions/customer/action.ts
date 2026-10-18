@@ -5,6 +5,8 @@ import { User, UserRole, CustomerInfo } from '@/types/user';
 import { Order, OrderItem } from '@/types/order';
 import { Product } from '@/types/product';
 import { revalidatePath } from 'next/cache';
+import { sendOrderInvoiceEmail } from '@/lib/email/service';
+import { OrderEmailPayload } from '@/lib/email/types';
 
 /**
  * Fetch a customer profile by User ID from Supabase
@@ -205,7 +207,7 @@ export async function createCustomerOrder(orderInput: {
   deliveryFee: number;
   total: number;
   items: { productId?: string; name: string; qty: number; price: number }[];
-}): Promise<{ success: boolean; order?: Order; error?: string }> {
+}): Promise<{ success: boolean; order?: Order; error?: string; emailSent?: boolean }> {
   try {
     const adminClient = createAdminClient();
     const orderId = `ORD-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -326,6 +328,47 @@ export async function createCustomerOrder(orderInput: {
       }
     }
 
+    // Automatically generate and dispatch official invoice email to customer
+    let emailSent = false;
+    if (orderInput.customerEmail) {
+      try {
+        const invoicePayload: OrderEmailPayload = {
+          orderId,
+          customerName: orderInput.customerName || 'Valued Patron',
+          customerEmail: orderInput.customerEmail,
+          recipientName: orderInput.recipientName,
+          recipientPhone: orderInput.recipientPhone,
+          shippingAddress: orderInput.shippingAddress,
+          deliveryDate: orderInput.deliveryDate,
+          cardMessage: orderInput.cardMessage || undefined,
+          items: orderInput.items.map((it) => ({
+            name: it.name,
+            qty: it.qty,
+            price: it.price
+          })),
+          subtotal: orderInput.subtotal,
+          deliveryFee: orderInput.deliveryFee,
+          total: orderInput.total,
+          paymentMethod: orderInput.paymentMethod,
+          paymentStatus:
+            orderInput.paymentMethod === 'Cash on Delivery'
+              ? 'Pending COD'
+              : 'Proof Uploaded (Pending Admin Clearance)',
+          adminNotes: orderInput.cardMessage ? `Gift Note: "${orderInput.cardMessage}"` : undefined
+        };
+
+        const emailRes = await sendOrderInvoiceEmail(invoicePayload);
+        emailSent = emailRes.success;
+        if (emailRes.success) {
+          console.log(`[Checkout] Invoice email successfully dispatched to ${orderInput.customerEmail} for order #${orderId}`);
+        } else {
+          console.warn(`[Checkout] Invoice email dispatch note for #${orderId}:`, emailRes.error);
+        }
+      } catch (invoiceErr) {
+        console.error(`[Checkout] Failed to dispatch invoice email for #${orderId}:`, invoiceErr);
+      }
+    }
+
     revalidatePath('/admin');
     revalidatePath('/products');
     revalidatePath('/account');
@@ -350,7 +393,7 @@ export async function createCustomerOrder(orderInput: {
       cardMessage: orderInput.cardMessage || undefined
     };
 
-    return { success: true, order: createdOrder };
+    return { success: true, order: createdOrder, emailSent };
   } catch (err: any) {
     return { success: false, error: err?.message || 'Failed to place order in database' };
   }

@@ -24,7 +24,8 @@ import {
   Download,
   CheckCircle2,
   FileCheck,
-  UserCheck
+  Calendar,
+  Clock
 } from 'lucide-react';
 import { CartItem } from '@/hooks/use-cart';
 import { User } from '@/types/user';
@@ -177,6 +178,18 @@ const E_WALLET_DETAILS = {
 
 type EWalletKey = keyof typeof E_WALLET_DETAILS;
 
+function getLocalDateString(d?: Date): string {
+  if (!d && typeof window === 'undefined') {
+    return '2026-01-01';
+  }
+  const dateObj = d || new Date();
+  const year = dateObj.getFullYear();
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const day = String(dateObj.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+
 export function CheckoutModal({
   isOpen,
   onClose,
@@ -220,14 +233,13 @@ export function CheckoutModal({
       setReferenceNumber('');
       setOrderSuccess(false);
       setIsSubmitting(false);
+      setIsProtectionChecked(false);
+      setDeliveryDate(getLocalDateString());
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
       return;
     }
-
-    // Default check Botanical Care & Petal Protection
-    setIsProtectionChecked(true);
 
     let userToUse = currentUser;
     if (!userToUse && typeof window !== 'undefined') {
@@ -261,8 +273,15 @@ export function CheckoutModal({
   }, [isOpen, currentUser, userDefaultName, userDefaultPhone, userDefaultAddress]);
 
   // Add-ons State
-  const [isProtectionChecked, setIsProtectionChecked] = useState(true);
+  const [isProtectionChecked, setIsProtectionChecked] = useState(false);
+  const [deliveryDate, setDeliveryDate] = useState<string>('');
   const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    if (!deliveryDate && typeof window !== 'undefined') {
+      setDeliveryDate(getLocalDateString());
+    }
+  }, [deliveryDate]);
 
   // Payment State: GCash or Maya
   const [paymentMethod, setPaymentMethod] = useState<EWalletKey>('gcash');
@@ -305,6 +324,7 @@ export function CheckoutModal({
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const uploadBoxRef = useRef<HTMLDivElement | null>(null);
+  const dateInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -339,6 +359,7 @@ export function CheckoutModal({
             name: 'Blushing Romance Peonies Bouquet',
             price: 1850,
             quantity: 1,
+            stock: 10,
             image:
               'https://images.unsplash.com/photo-1526047932273-341f2a7631f9?auto=format&fit=crop&w=700&q=80'
           }
@@ -575,6 +596,13 @@ export function CheckoutModal({
       return;
     }
 
+    // Check for out-of-stock items in cart
+    const unavailable = checkoutItems.find(item => item.stock !== undefined && item.stock <= 0);
+    if (unavailable) {
+      setUploadError(`"${unavailable.name}" is currently out of stock and not available for purchase. Please remove it from your basket.`);
+      return;
+    }
+
     // Verify receipt upload
     if (!receipt) {
       setUploadError('Please upload your GCash or Maya payment receipt (PNG or JPEG) to complete your order.');
@@ -627,7 +655,7 @@ export function CheckoutModal({
           fulfillmentMethod === 'delivery'
             ? shippingAddress
             : 'Studio Pickup at Ron’s Bloom Crafts Atelier (12 Magnolia Way)',
-        deliveryDate: new Date().toISOString().split('T')[0],
+        deliveryDate: deliveryDate || getLocalDateString(),
         cardMessage:
           message ||
           (fulfillmentMethod === 'pickup'
@@ -721,16 +749,6 @@ export function CheckoutModal({
                   <div className="flex-1">
                     <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                       <span className="text-sm font-semibold text-stone-900">Delivery Address</span>
-                      {activeUser?.email ? (
-                        <span className="inline-flex items-center space-x-1 text-[10px] font-semibold bg-emerald-50 text-[#2D5A43] px-2 py-0.5 rounded-full border border-emerald-200/70">
-                          <UserCheck className="w-3 h-3 text-emerald-600" />
-                          <span>Connected Account</span>
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center space-x-1 text-[10px] font-medium bg-stone-100 text-stone-600 px-2 py-0.5 rounded-full">
-                          <span>Guest Checkout</span>
-                        </span>
-                      )}
                     </div>
 
                     {!isEditingAddress ? (
@@ -745,11 +763,6 @@ export function CheckoutModal({
                                 <span className="text-amber-600 italic">No delivery address registered on your account yet. Click to add.</span>
                               )}
                             </p>
-                            {activeUser?.email && (
-                              <p className="text-[11px] text-stone-400 mt-0.5 font-mono">
-                                Customer: {activeUser.email}
-                              </p>
-                            )}
                           </>
                         ) : (
                           <div className="mt-1 p-2 bg-amber-50 rounded-lg border border-amber-200 text-amber-800 flex items-center justify-between">
@@ -916,10 +929,15 @@ export function CheckoutModal({
                     <h4 className="font-serif font-bold text-stone-900 line-clamp-2 text-xs sm:text-sm">
                       {item.name}
                     </h4>
-                    <div className="mt-0.5">
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1">
                       <span className="border border-[#2D5A43]/40 bg-emerald-50/50 text-[#2D5A43] text-[10px] px-1.5 py-0.5 rounded-sm font-medium">
                         Fresh-Cut Bespoke
                       </span>
+                      {item.stock !== undefined && item.stock <= 0 && (
+                        <span className="bg-rose-600 text-white text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-sm shadow-xs">
+                          NOT AVAILABLE
+                        </span>
+                      )}
                     </div>
                     <p className="text-[11px] text-stone-500 mt-1">
                       Grand Deluxe Stems & Artisanal Silk Ribbon
@@ -997,7 +1015,124 @@ export function CheckoutModal({
             </div>
           </div>
 
-          {/* SECTION 5: Florist Calligraphy Card Message */}
+          {/* SECTION 5: Schedule Delivery / Pickup Date */}
+          {(() => {
+            const todayDateString = typeof window !== 'undefined' ? getLocalDateString() : '2026-01-01';
+            const effectiveDeliveryDate = deliveryDate || todayDateString;
+            const isSameDay = !deliveryDate || deliveryDate === todayDateString;
+
+            return (
+              <div className="bg-white px-4 py-3.5 border-b border-stone-200/60 text-xs">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center space-x-1.5">
+                    <Calendar className="w-4 h-4 text-[#2D5A43]" />
+                    <span className="font-semibold text-stone-900">
+                      {fulfillmentMethod === 'delivery' ? 'Scheduled Delivery Date' : 'Scheduled Pickup Date'}
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-medium text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60 font-mono">
+                    {isSameDay
+                      ? '⚡ Same-Day'
+                      : `📅 ${effectiveDeliveryDate}`}
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryDate(getLocalDateString())}
+                      className={`w-full py-1.5 px-2 rounded-xl border text-xs font-medium transition cursor-pointer flex flex-col items-center justify-center space-y-0.5 focus:outline-hidden focus:ring-2 focus:ring-[#2D5A43] focus:ring-offset-1 ${
+                        isSameDay
+                          ? 'bg-[#2D5A43] text-white border-[#2D5A43] shadow-2xs font-semibold'
+                          : 'bg-stone-50 hover:bg-stone-100 text-stone-700 border-stone-200'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-1">
+                        <Clock className="w-3 h-3" />
+                        <span>Today</span>
+                      </div>
+                      <span className={`text-[10px] ${isSameDay ? 'text-emerald-100' : 'text-stone-400'}`}>
+                        Same-day
+                      </span>
+                    </button>
+
+                    <div className="relative rounded-xl focus-within:ring-2 focus-within:ring-[#2D5A43] focus-within:ring-offset-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          try {
+                            dateInputRef.current?.showPicker?.();
+                          } catch {
+                            dateInputRef.current?.focus();
+                          }
+                        }}
+                        className={`w-full h-full py-1.5 px-2 rounded-xl border text-xs font-medium transition cursor-pointer flex flex-col items-center justify-center space-y-0.5 ${
+                          !isSameDay
+                            ? 'bg-[#2D5A43] text-white border-[#2D5A43] shadow-2xs font-semibold'
+                            : 'bg-stone-50 hover:bg-stone-100 text-stone-700 border-stone-200'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-1">
+                          <Calendar className="w-3 h-3" />
+                          <span>Custom Date</span>
+                        </div>
+                        <span
+                          className={`text-[10px] ${
+                            !isSameDay ? 'text-emerald-100 font-medium' : 'text-stone-400'
+                          }`}
+                        >
+                          {!isSameDay
+                            ? new Date(effectiveDeliveryDate + 'T00:00:00').toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric'
+                              })
+                            : 'Pick a date'}
+                        </span>
+                      </button>
+
+                      <input
+                        ref={dateInputRef}
+                        type="date"
+                        min={todayDateString}
+                        value={effectiveDeliveryDate}
+                        onChange={(e) => {
+                          if (e.target.value) setDeliveryDate(e.target.value);
+                        }}
+                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                        onClick={(e) => {
+                          try {
+                            (e.currentTarget as HTMLInputElement).showPicker?.();
+                          } catch {}
+                        }}
+                        aria-label="Select custom delivery date"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Delivery Schedule Helper Notice */}
+                  <div className="flex items-start space-x-1.5 text-[11px] text-stone-500 bg-stone-50/70 p-2 rounded-lg border border-stone-200/60">
+                    <span className="font-semibold text-[#2D5A43] shrink-0">
+                      {fulfillmentMethod === 'delivery' ? 'Freshness Notice:' : 'Studio Ready:'}
+                    </span>
+                    <span className="leading-tight">
+                      {isSameDay
+                        ? 'Orders placed today are crafted with same-day freshly conditioned stems and prompt dispatch.'
+                        : `Your blooms will be arranged on ${new Date(effectiveDeliveryDate + 'T00:00:00').toLocaleDateString('en-US', {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric'
+                          })} for peak petal beauty and longevity upon arrival.`}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* SECTION 6: Florist Calligraphy Card Message */}
           <div className="bg-white px-4 py-3 flex items-center justify-between text-xs border-b border-stone-200/60">
             <span className="text-stone-700 font-medium shrink-0 mr-3">Message:</span>
             <input
@@ -1009,7 +1144,7 @@ export function CheckoutModal({
             />
           </div>
 
-          {/* SECTION 6: Order Total Breakdown Connected to Basket */}
+          {/* SECTION 7: Order Total Breakdown Connected to Basket */}
           <div className="bg-white px-4 py-3 text-xs border-b border-stone-200/60 space-y-1.5">
             <div className="flex justify-between items-center text-stone-600">
               <span>Basket Subtotal ({totalItemCount} item{totalItemCount > 1 ? 's' : ''}):</span>
@@ -1027,6 +1162,12 @@ export function CheckoutModal({
               <span>Fulfillment ({fulfillmentMethod === 'delivery' ? 'Courier Delivery' : 'Studio Pickup'}):</span>
               <span className="font-semibold text-stone-900 font-mono">
                 {shippingFee > 0 ? `₱${shippingFee.toFixed(2)}` : 'FREE'}
+              </span>
+            </div>
+            <div className="flex justify-between items-center text-stone-600 text-[11px]">
+              <span>Scheduled Date:</span>
+              <span className="font-semibold text-stone-900 font-mono">
+                {deliveryDate === getLocalDateString() ? `Today (${deliveryDate})` : deliveryDate}
               </span>
             </div>
             <div className="flex justify-between items-baseline pt-1.5 border-t border-stone-100">

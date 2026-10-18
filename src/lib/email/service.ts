@@ -63,7 +63,7 @@ export async function sendOrderNotificationEmail(
       to: recipient,
       subject,
       html,
-      text: `${subject}\n\nHello ${order.customerName},\nOrder #${order.orderId} status update: ${type}.\nTotal: $${order.total.toFixed(2)}.\n\nThank you for choosing Ron's Bloom Crafts.`
+      text: `${subject}\n\nHello ${order.customerName},\nOrder #${order.orderId} status update: ${type}.\nTotal: ₱${order.total.toFixed(2)}.\n\nThank you for choosing Ron's Bloom Crafts.`
     });
 
     console.log(`[Email Service] Successfully sent "${type}" email! Message ID: ${info.messageId}`);
@@ -86,6 +86,18 @@ export async function sendOrderNotificationEmail(
     };
   }
 }
+
+/**
+ * Convenient typed helper: Send Official Invoice & Order Confirmation
+ */
+export async function sendOrderInvoiceEmail(
+  order: OrderEmailPayload,
+  overrideRecipient?: string
+): Promise<EmailResult> {
+  return sendOrderNotificationEmail('invoice', order, { overrideRecipient });
+}
+
+export const sendOrderPlacedEmail = sendOrderInvoiceEmail;
 
 /**
  * Convenient typed helper: Payment Verified

@@ -195,6 +195,11 @@ export function useCart(userOrProducts?: User | Product[] | null) {
   // Add Item to Cart (Basket)
   const addToCart = useCallback(
     (product: Product, customMessage = '') => {
+      // Prevent adding items with zero or negative stock
+      if ((product.stock ?? 0) <= 0) {
+        return;
+      }
+
       setCart((prev) => {
         const existing = prev.find((item) => item.id === product.id);
         let updated: CartItem[];

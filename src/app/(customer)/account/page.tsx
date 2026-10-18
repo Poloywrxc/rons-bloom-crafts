@@ -219,14 +219,15 @@ export default function AccountPage() {
     }
   };
 
-  const handleSubmitReview = async (rev: { bouquet: string; rating: number; comment: string }) => {
+  const handleSubmitReview = async (rev: { bouquet: string; rating: number; comment: string; orderId?: string }) => {
     const matched = products.find((p) => p.name.toLowerCase() === rev.bouquet.toLowerCase());
     await submitCustomerReview({
       userId: currentUser?.id,
       userName: currentUser?.name || 'Valued Patron',
       productId: matched?.id || 'a0000001-0000-0000-0000-000000000001',
       rating: rev.rating,
-      comment: rev.comment
+      comment: rev.comment,
+      orderId: rev.orderId
     });
   };
 
@@ -274,7 +275,7 @@ export default function AccountPage() {
 
     if (res.success && res.order) {
       setOrders((prev) => [res.order!, ...prev]);
-      notify(`Order ${res.order.id} placed & saved to Supabase database! 🌸`);
+      notify(`Order ${res.order.id} placed! An official invoice has been emailed to you. 🌸`);
     } else {
       const fallbackOrder: Order = {
         id: finalOrderId,
@@ -352,6 +353,10 @@ export default function AccountPage() {
           wishlist={wishlist}
           onToggleWishlist={handleWishlistToggle}
           onAddToCart={(p) => {
+            if ((p.stock ?? 0) <= 0) {
+              notify(`"${p.name}" is currently out of stock and not available.`);
+              return;
+            }
             addToCart(p);
             notify(`Added ${p.name} to cart!`);
           }}

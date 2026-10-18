@@ -95,6 +95,10 @@ export default function CategoriesPage() {
   };
 
   const handleAddToCart = (p: Product) => {
+    if ((p.stock ?? 0) <= 0) {
+      notify(`"${p.name}" is currently out of stock and not available.`);
+      return;
+    }
     if (!currentUser) {
       setSelectedProduct(null);
       setLoginPromptProduct(p);
@@ -221,7 +225,7 @@ export default function CategoriesPage() {
           });
           clearCart();
           setIsCheckoutModalOpen(false);
-          notify('Order placed successfully! 🌸');
+          notify('Order placed successfully! An official invoice has been emailed to you. 🌸');
           router.push('/account');
           return res.success && res.order ? res.order.id : undefined;
         }}

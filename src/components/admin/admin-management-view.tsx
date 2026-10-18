@@ -40,6 +40,7 @@ import { InventoryModal } from './inventory-modal';
 import { CustomerTable } from './users-table';
 import { SalesTable } from './sales-table';
 import { BestSellersTable } from './best-sellers-table';
+import { WelcomeModal } from '@/components/shared/welcome-modal';
 import {
   updateOrderStatusAction,
   updateOrderPaymentStatusAction
@@ -106,6 +107,31 @@ export function AdminManagementView({
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [showInventoryModal, setShowInventoryModal] = useState(false);
   const [selectedInventoryItem, setSelectedInventoryItem] = useState<InventoryItem | null>(null);
+
+  // Welcome modal state
+  const [welcomeModal, setWelcomeModal] = useState<{
+    isOpen: boolean;
+    name: string;
+    role?: string;
+  }>({
+    isOpen: false,
+    name: ''
+  });
+
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem('bloom_welcome_user');
+      if (stored) {
+        sessionStorage.removeItem('bloom_welcome_user');
+        const parsed = JSON.parse(stored);
+        setWelcomeModal({
+          isOpen: true,
+          name: parsed.name || 'Master Florist Ron',
+          role: parsed.role || 'admin'
+        });
+      }
+    } catch {}
+  }, []);
 
   // Mobile sidebar & UI collapse
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -814,9 +840,6 @@ export function AdminManagementView({
                 <div className="p-5 sm:p-6 border-b border-stone-200/80 bg-stone-50/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div>
                     <div className="flex items-center space-x-2">
-                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase tracking-wider font-mono">
-                        1. Product Management
-                      </span>
                       <span className="text-xs text-stone-500 font-medium">
                         {filteredProducts.length} of {products.length} Products Shown
                       </span>
@@ -959,11 +982,8 @@ export function AdminManagementView({
                               </td>
 
                               {/* 2. Product Name */}
-                              <td className="p-3.5 font-bold text-stone-900 max-w-[170px]">
+                              <td className="p-3.5 font-bold text-stone-900 max-w-[200px]">
                                 <span className="block leading-tight">{p.name}</span>
-                                {p.tags && p.tags.length > 0 && (
-                                  <span className="text-[9px] text-stone-400 font-mono">{p.tags.join(' • ')}</span>
-                                )}
                               </td>
 
                               {/* 4. Category */}
@@ -1120,9 +1140,6 @@ export function AdminManagementView({
                 <div className="p-5 sm:p-6 border-b border-stone-200/80 bg-stone-50/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div>
                     <div className="flex items-center space-x-2">
-                      <span className="px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-800 text-[10px] font-bold uppercase tracking-wider font-mono">
-                        2. Inventory Management
-                      </span>
                       <span className="text-xs text-stone-500 font-medium">
                         {filteredInventory.length} of {inventory.length} Stock Records
                       </span>
@@ -1246,23 +1263,20 @@ export function AdminManagementView({
                                         onClick={() => setPreviewImage(linkedProduct.image)}
                                       />
                                       <div className="min-w-0">
-                                        <div className="flex items-center space-x-1.5">
-                                          <span className="font-mono text-[10px] font-bold text-[#2D5A43] bg-emerald-50 px-1 rounded">
-                                            {item.productId}
-                                          </span>
-                                          <span className="font-mono text-[10px] text-stone-400">
+                                        {linkedProduct.sku && (
+                                          <span className="font-mono text-[10px] font-bold text-[#2D5A43] bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60 inline-block mb-0.5">
                                             {linkedProduct.sku}
                                           </span>
-                                        </div>
-                                        <span className="font-bold text-stone-900 block truncate text-xs mt-0.5">
+                                        )}
+                                        <span className="font-bold text-stone-900 block truncate text-xs leading-tight">
                                           {linkedProduct.name}
                                         </span>
                                       </div>
                                     </>
                                   ) : (
                                     <div>
-                                      <span className="font-mono font-bold text-[#2D5A43]">{item.productId}</span>
-                                      <span className="text-[10px] text-stone-400 block">Archived or Unlinked</span>
+                                      <span className="font-bold text-stone-700 block text-xs">Unlinked Product</span>
+                                      <span className="text-[10px] text-stone-400 block font-mono">Archived</span>
                                     </div>
                                   )}
                                 </div>
@@ -1435,6 +1449,14 @@ export function AdminManagementView({
           </div>
         </div>
       )}
+
+      {/* Welcome Popup Modal */}
+      <WelcomeModal
+        isOpen={welcomeModal.isOpen}
+        onClose={() => setWelcomeModal((prev) => ({ ...prev, isOpen: false }))}
+        userName={welcomeModal.name}
+        role={welcomeModal.role}
+      />
     </div>
   );
 }

@@ -24,9 +24,16 @@ export function CartItemCard({ item, onUpdateQty, onRemove }: CartItemCardProps)
             <h4 className="font-serif text-xs sm:text-sm font-semibold text-stone-900 leading-snug line-clamp-1 truncate">
               {item.name}
             </h4>
-            <span className="text-[11px] sm:text-xs text-[#2D5A43] font-bold font-mono">
-              ₱{item.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </span>
+            <div className="flex items-center space-x-2">
+              <span className="text-[11px] sm:text-xs text-[#2D5A43] font-bold font-mono">
+                ₱{item.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+              {item.stock !== undefined && item.stock <= 0 && (
+                <span className="text-[10px] bg-rose-100 text-rose-700 font-bold px-1.5 py-0.2 rounded border border-rose-200">
+                  Not Available
+                </span>
+              )}
+            </div>
           </div>
           <button
             type="button"
@@ -212,14 +219,31 @@ export function CartDrawer({
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={onCheckout}
-              className="w-full py-2.5 sm:py-3 bg-[#2D5A43] hover:bg-emerald-800 text-white font-semibold rounded-full shadow-md transition flex items-center justify-center space-x-2 text-xs sm:text-sm cursor-pointer hover:scale-[1.01] active:scale-[0.99]"
-            >
-              <span>Proceed to Checkout</span>
-              <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            </button>
+            {(() => {
+              const hasOutOfStock = cart.some(item => item.stock !== undefined && item.stock <= 0);
+              return (
+                <>
+                  {hasOutOfStock && (
+                    <div className="p-2 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-[11px] text-center font-medium">
+                      Some items are out of stock and not available. Please remove them to proceed.
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    disabled={hasOutOfStock}
+                    onClick={onCheckout}
+                    className={`w-full py-2.5 sm:py-3 font-semibold rounded-full shadow-md transition flex items-center justify-center space-x-2 text-xs sm:text-sm ${
+                      hasOutOfStock
+                        ? 'bg-stone-300 text-stone-500 cursor-not-allowed border border-stone-300'
+                        : 'bg-[#2D5A43] hover:bg-emerald-800 text-white cursor-pointer hover:scale-[1.01] active:scale-[0.99]'
+                    }`}
+                  >
+                    <span>Proceed to Checkout</span>
+                    <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  </button>
+                </>
+              );
+            })()}
             <p className="text-[9px] sm:text-[10px] text-center text-stone-400">
               Free cancellation within 2 hours of booking
             </p>

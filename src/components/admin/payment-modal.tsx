@@ -29,19 +29,30 @@ import {
 import { Order } from '@/types/order';
 import { updateOrderStatusAction } from '@/actions/order/action';
 import { EmailPreviewModal } from './email-preview-modal';
+import {
+  STAGE_OPTIONS,
+  getOrderStage,
+  getOrderDropdownValue
+} from './order-table';
 
 interface PaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
   order: Order | null;
   onUpdatePaymentStatus?: (orderId: string, newStatus: string) => void;
+  onUpdateStatus?: (
+    orderId: string,
+    newStatus: string,
+    refundDetails?: { refundMethod: 'GCash' | 'Maya' | string; refundNumber: string; notes?: string }
+  ) => void;
 }
 
 export function PaymentModal({
   isOpen,
   onClose,
   order,
-  onUpdatePaymentStatus
+  onUpdatePaymentStatus,
+  onUpdateStatus
 }: PaymentModalProps) {
   const [isEnlargedProofOpen, setIsEnlargedProofOpen] = useState(false);
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
@@ -252,10 +263,10 @@ export function PaymentModal({
                       <Phone className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                       <input
                         type="text"
+                        readOnly
                         value={refundPhone}
-                        onChange={(e) => setRefundPhone(e.target.value)}
-                        placeholder={`Enter customer's 11-digit ${refundWallet} number (e.g. 09171234567)`}
-                        className="w-full pl-9 pr-3 py-2 bg-white border border-rose-300 rounded-xl text-xs font-mono font-bold text-stone-900 placeholder:text-stone-400 focus:outline-hidden focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition"
+                        placeholder={`No customer ${refundWallet} number on file`}
+                        className="w-full pl-9 pr-3 py-2 bg-stone-50 border border-rose-200 rounded-xl text-xs font-mono font-bold text-stone-900 placeholder:text-stone-400 focus:outline-hidden select-all cursor-default"
                       />
                     </div>
                     {refundPhone && (
@@ -312,81 +323,7 @@ export function PaymentModal({
             );
           })()}
 
-          {/* Payment Status Banner */}
-          <div
-            className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-              isVerified
-                ? 'bg-emerald-50/90 border-emerald-200 text-emerald-900'
-                : isRejected
-                ? 'bg-rose-50/90 border-rose-200 text-rose-900'
-                : 'bg-amber-50/90 border-amber-200 text-amber-900'
-            }`}
-          >
-            <div className="flex items-center space-x-3">
-              <div
-                className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                  isVerified
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : isRejected
-                    ? 'bg-rose-600 text-white shadow-xs'
-                    : 'bg-amber-500 text-white shadow-xs'
-                }`}
-              >
-                {isVerified && <CheckCircle2 className="w-5 h-5" />}
-                {isRejected && <XCircle className="w-5 h-5" />}
-                {isPending && <Clock className="w-5 h-5" />}
-              </div>
-              <div>
-                <div className="text-[11px] uppercase tracking-wider font-bold opacity-75">
-                  Current Verification State
-                </div>
-                <div className="font-serif font-bold text-base flex items-center gap-2">
-                  <span>{order.paymentStatus || 'Pending Verification'}</span>
-                  {isVerified && (
-                    <span className="text-[10px] font-sans font-semibold bg-emerald-200/80 text-emerald-900 px-2 py-0.5 rounded-full">
-                      Cleared & Ready for Atelier
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
 
-            {/* Quick action buttons in status bar */}
-            {onUpdatePaymentStatus && (
-              <div className="flex items-center space-x-1.5 shrink-0 self-end sm:self-center">
-                {!isVerified && (
-                  <button
-                    type="button"
-                    onClick={() => onUpdatePaymentStatus(order.id, 'Verified & Cleared')}
-                    className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold shadow-xs transition cursor-pointer"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Approve / Verify</span>
-                  </button>
-                )}
-                {isVerified && (
-                  <button
-                    type="button"
-                    onClick={() => onUpdatePaymentStatus(order.id, 'Proof Uploaded (Pending Admin)')}
-                    className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold shadow-xs transition cursor-pointer"
-                  >
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>Set Pending</span>
-                  </button>
-                )}
-                {!isRejected && (
-                  <button
-                    type="button"
-                    onClick={() => onUpdatePaymentStatus(order.id, 'Payment Rejected')}
-                    className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 text-xs font-semibold transition cursor-pointer"
-                  >
-                    <XCircle className="w-3.5 h-3.5" />
-                    <span>Reject</span>
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
 
           {/* Digital Receipt / Electronic Slip Preview Card */}
           <div className="bg-gradient-to-b from-stone-50 to-stone-100/60 rounded-2xl border border-stone-200 p-5 space-y-4 shadow-2xs relative overflow-hidden">
@@ -527,9 +464,55 @@ export function PaymentModal({
                   <span className="font-mono font-bold text-[#2D5A43]">{order.deliveryDate}</span>
                 </div>
               </div>
-              <div className="pt-1.5 border-t border-stone-200/60">
-                <span className="text-[10px] text-stone-400 block">Fulfillment Status</span>
-                <span className="font-semibold text-stone-800">{order.status}</span>
+              <div className="pt-2 border-t border-stone-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <span className="text-[10px] text-stone-400 block">Status Transition</span>
+                  <span className="font-semibold text-stone-800 text-xs">{getOrderDropdownValue(order)}</span>
+                </div>
+                {onUpdateStatus && (
+                  <div className="relative">
+                    <select
+                      value={getOrderDropdownValue(order)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === 'Canceled') {
+                          onUpdateStatus(order.id, 'Cancelled');
+                        } else if (val === 'Payment Proof (Verified)') {
+                          if (onUpdatePaymentStatus) onUpdatePaymentStatus(order.id, 'Verified & Cleared');
+                        } else if (val === 'Payment Proof (Pending)') {
+                          if (onUpdatePaymentStatus) onUpdatePaymentStatus(order.id, 'Proof Uploaded (Pending Admin)');
+                        } else if (val === 'Payment Proof (Rejected)') {
+                          if (onUpdatePaymentStatus) onUpdatePaymentStatus(order.id, 'Payment Rejected');
+                        } else if (val === 'Floral Artistry') {
+                          onUpdateStatus(order.id, 'Floral Artistry in Progress');
+                        } else if (val === 'Out of Delivery') {
+                          onUpdateStatus(order.id, 'Out for Delivery');
+                        } else if (val === 'Delivered') {
+                          onUpdateStatus(order.id, 'Delivered');
+                        } else if (val === 'Order Received') {
+                          onUpdateStatus(order.id, 'Order Received');
+                        }
+                      }}
+                      className="py-1 px-2.5 pr-6 border border-stone-300 rounded-lg text-xs font-medium bg-white hover:bg-stone-50 cursor-pointer transition appearance-none"
+                    >
+                      {STAGE_OPTIONS.map((opt) => {
+                        const currentStage = getOrderStage(order);
+                        const isLocked = currentStage === 99 ? opt.stage !== 99 : opt.stage < currentStage;
+                        const isDisabled = isLocked || (opt.stage === 99 && currentStage === 5);
+                        return (
+                          <option
+                            key={opt.value}
+                            value={opt.value}
+                            disabled={isDisabled}
+                            className={isLocked ? 'text-stone-400 italic' : ''}
+                          >
+                            {isLocked ? `🔒 ${opt.label}` : opt.label}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                )}
               </div>
             </div>
           </div>

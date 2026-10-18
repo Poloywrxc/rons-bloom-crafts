@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { Order } from '@/types/order';
 import { revalidatePath } from 'next/cache';
 import {
+  sendOrderInvoiceEmail,
   sendFloralArtistryEmail,
   sendOutForDeliveryEmail,
   sendDeliveredEmail,
@@ -478,6 +479,16 @@ export async function sendManualOrderEmailAction(
     console.error('Error in sendManualOrderEmailAction:', err);
     return { success: false, error: err?.message || 'Failed to send order email' };
   }
+}
+
+/**
+ * Send or re-send the invoice email for any order
+ */
+export async function sendOrderInvoiceEmailAction(
+  orderId: string,
+  overrideRecipient?: string
+): Promise<{ success: boolean; error?: string; messageId?: string }> {
+  return sendManualOrderEmailAction(orderId, 'invoice', { overrideRecipient });
 }
 
 /**

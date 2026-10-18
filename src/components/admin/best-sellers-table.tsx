@@ -392,15 +392,7 @@ export function BestSellersTable({
         {/* Header & Controls */}
         <div className="p-5 sm:p-6 border-b border-stone-200/80 bg-stone-50/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center space-x-2">
-              <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-bold uppercase tracking-wider font-mono">
-                Storefront Spotlight
-              </span>
-              <span className="text-[10px] text-stone-400 font-mono">
-                Arranged directly with Sales & Storefront
-              </span>
-            </div>
-            <h3 className="font-serif font-bold text-stone-900 text-xl mt-1">
+            <h3 className="font-serif font-bold text-stone-900 text-xl">
               Best Sellers Management
             </h3>
             <p className="text-xs text-stone-500">

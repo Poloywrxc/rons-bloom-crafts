@@ -13,16 +13,16 @@ function escapeHtml(str: string = ''): string {
 }
 
 /**
- * Format currency with fallback
+ * Format currency with fallback (Philippine Peso ₱)
  */
 function formatCurrency(amount: number = 0): string {
-  return `$${Number(amount || 0).toFixed(2)}`;
+  return `₱${Number(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 /**
  * Render visual progress stepper bar for floral order fulfillment
  */
-function renderTimelineStepper(activeStep: 'verified' | 'artistry' | 'delivery' | 'delivered' | 'cancelled' | 'refund'): string {
+function renderTimelineStepper(activeStep: 'placed' | 'verified' | 'artistry' | 'delivery' | 'delivered' | 'cancelled' | 'refund'): string {
   if (activeStep === 'cancelled' || activeStep === 'refund') {
     const isRefund = activeStep === 'refund';
     return `
@@ -152,6 +152,9 @@ function renderCareGuide(): string {
  */
 export function getEmailSubject(type: OrderEmailType, order: OrderEmailPayload): string {
   switch (type) {
+    case 'invoice':
+    case 'order_placed':
+      return `🧾 Official Invoice & Order Confirmation: #${order.orderId} | Ron's Bloom Crafts`;
     case 'payment_verified':
       return `✨ Payment Verified & Cleared - Order #${order.orderId} | Ron's Bloom Crafts`;
     case 'payment_rejected':
@@ -182,6 +185,7 @@ export function generateOrderEmailHtml(type: OrderEmailType, order: OrderEmailPa
   const safeAddress = escapeHtml(order.shippingAddress || 'Atelier Pick-up');
   const safeDeliveryDate = escapeHtml(order.deliveryDate || 'Scheduled date');
   const safePaymentMethod = escapeHtml(order.paymentMethod || 'GCash / E-Wallet');
+  const safePaymentStatus = escapeHtml(order.paymentStatus || 'Pending Verification');
   const safeNotes = escapeHtml(order.adminNotes || '');
   const subtotal = order.subtotal !== undefined ? order.subtotal : Math.max(0, order.total - (order.deliveryFee ?? 10));
   const deliveryFee = order.deliveryFee !== undefined ? order.deliveryFee : 10;
@@ -195,9 +199,103 @@ export function generateOrderEmailHtml(type: OrderEmailType, order: OrderEmailPa
   let subheadline = '';
   let bannerIcon = '🌸';
   let dynamicSection = '';
-  let activeTimelineStep: 'verified' | 'artistry' | 'delivery' | 'delivered' | 'cancelled' | 'refund' = 'verified';
+  let activeTimelineStep: 'placed' | 'verified' | 'artistry' | 'delivery' | 'delivered' | 'cancelled' | 'refund' = 'placed';
 
   switch (type) {
+    case 'invoice':
+    case 'order_placed':
+      activeTimelineStep = 'placed';
+      badgeText = 'Tax Invoice &amp; Order Placed';
+      badgeBg = '#1b3b2b';
+      badgeColor = '#ffffff';
+      bannerIcon = '🧾';
+      headline = 'Official Invoice &amp; Order Confirmation';
+      subheadline = `Thank you, ${safeCustomer}. We have received your order <strong>#${safeOrderId}</strong>. This document serves as your official atelier invoice and confirms your delivery booking.`;
+      dynamicSection = `
+        <!-- Invoice Metadata & Party Card -->
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #fafbfa; border: 1px solid #dbe7df; border-radius: 14px; margin: 20px 0; overflow: hidden;">
+          <tr>
+            <td style="padding: 16px 20px; background-color: #f1f5f2; border-bottom: 1px solid #dbe7df;">
+              <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                <tr>
+                  <td>
+                    <span style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #1b3b2b; display: block;">
+                      Official Invoice Reference
+                    </span>
+                    <span style="font-family: monospace; font-size: 15px; font-weight: bold; color: #1b3b2b;">
+                      INV-${safeOrderId}
+                    </span>
+                  </td>
+                  <td align="right">
+                    <span style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 11px; color: #6b7280; text-transform: uppercase; display: block;">
+                      Issue Date
+                    </span>
+                    <span style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; font-weight: 600; color: #1f2937;">
+                      ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 18px 20px;">
+              <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                <tr>
+                  <td style="vertical-align: top; width: 50%; padding-right: 14px;">
+                    <span style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #6b7280; display: block; margin-bottom: 4px;">
+                      Billed To (Customer)
+                    </span>
+                    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; font-weight: 600; color: #111827;">
+                      ${safeCustomer}
+                    </div>
+                    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; color: #4b5563; margin-top: 2px;">
+                      ${escapeHtml(order.customerEmail)}
+                    </div>
+                    ${safePhone ? `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; color: #6b7280; margin-top: 2px;">${safePhone}</div>` : ''}
+                  </td>
+                  <td style="vertical-align: top; width: 50%; padding-left: 14px; border-left: 1px solid #e5eae6;">
+                    <span style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #6b7280; display: block; margin-bottom: 4px;">
+                      Payment Details
+                    </span>
+                    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; font-weight: 600; color: #111827;">
+                      ${safePaymentMethod}
+                    </div>
+                    <div style="margin-top: 5px;">
+                      <span style="display: inline-block; padding: 3px 8px; border-radius: 6px; background-color: #ecfdf5; border: 1px solid #a7f3d0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 11px; font-weight: 600; color: #065f46;">
+                        ${safePaymentMethod === 'Cash on Delivery' ? 'Cash on Delivery' : 'Proof Uploaded (Pending Admin Clearance)'}
+                      </span>
+                    </div>
+                    ${order.referenceNumber ? `
+                      <div style="margin-top: 4px; font-family: monospace; font-size: 11px; color: #4b5563;">
+                        Ref: ${escapeHtml(order.referenceNumber)}
+                      </div>
+                    ` : ''}
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+
+        <!-- Reassurance Banner -->
+        <div style="background-color: #f0fdf4; border-left: 4px solid #16a34a; padding: 14px 18px; border-radius: 8px; margin: 16px 0;">
+          <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+              <td style="vertical-align: top; width: 22px;">
+                <span style="font-size: 16px;">🌿</span>
+              </td>
+              <td style="padding-left: 10px;">
+                <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; color: #166534; line-height: 1.5;">
+                  <strong>Order Registered:</strong> Your floral stems have been reserved in our atelier inventory. Our master florist team is reviewing your details to commence floral artistry.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </div>
+      `;
+      break;
+
     case 'payment_verified':
       activeTimelineStep = 'verified';
       badgeText = 'Payment Verified &amp; Cleared';
@@ -249,17 +347,17 @@ export function generateOrderEmailHtml(type: OrderEmailType, order: OrderEmailPa
       headline = 'Handcrafting Your Arrangement';
       subheadline = `Wonderful news, ${safeCustomer}! Your bespoke floral arrangement for order <strong>#${safeOrderId}</strong> is now being artfully composed by our master florists.`;
       dynamicSection = `
-        <div style="background: linear-gradient(135deg, #f7f9f7 0%, #edf5f0 100%); border: 1px solid #c7ddcf; padding: 20px; border-radius: 12px; margin: 20px 0;">
+        <div style="background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border: 1px solid #a7f3d0; padding: 20px; border-radius: 12px; margin: 20px 0;">
           <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
             <tr>
               <td style="vertical-align: top; width: 36px;">
                 <span style="font-size: 26px; line-height: 1;">✂️</span>
               </td>
               <td style="padding-left: 12px;">
-                <h4 style="margin: 0 0 4px 0; font-family: 'Playfair Display', Georgia, serif; font-size: 15px; font-weight: bold; color: #1b3b2b;">
+                <h4 style="margin: 0 0 4px 0; font-family: 'Playfair Display', Georgia, serif; font-size: 15px; font-weight: bold; color: #2D5A43;">
                   Atelier Craftsmanship Pledge
                 </h4>
-                <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; color: #374151; line-height: 1.6;">
+                <p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; color: #2D5A43; line-height: 1.6;">
                   Every stem is conditioned in mineral-rich cold water, arranged by hand according to Japanese botanical harmony principles, and finished with luxury silk ribbon and protective packaging.
                 </p>
               </td>

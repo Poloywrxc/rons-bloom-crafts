@@ -1,4 +1,6 @@
 export type OrderEmailType =
+  | 'invoice'
+  | 'order_placed'
   | 'payment_verified'
   | 'payment_rejected'
   | 'floral_artistry'
@@ -15,6 +17,7 @@ export interface EmailOrderItem {
 
 export interface OrderEmailPayload {
   orderId: string;
+  invoiceNumber?: string;
   customerName: string;
   customerEmail: string;
   recipientName?: string;
@@ -28,6 +31,7 @@ export interface OrderEmailPayload {
   total: number;
   paymentMethod?: string;
   paymentStatus?: string;
+  referenceNumber?: string;
   refundDetails?: {
     refundMethod: 'GCash' | 'Maya' | string;
     refundNumber: string;

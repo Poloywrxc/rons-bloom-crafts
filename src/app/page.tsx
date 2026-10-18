@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
-import { Sparkles, RefreshCw } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 
 import { Product } from '@/types/product';
 import { InventoryItem } from '@/types/inventory';
@@ -22,6 +22,7 @@ import { AdminManagementView } from '@/components/admin/admin-management-view';
 import { AuthPortalView } from '@/components/auth/auth-portal-view';
 import { CheckoutModal, CheckoutOrderData } from '@/components/customer/checkout-modal';
 import { LoginRequiredModal } from '@/components/store/login-required-modal';
+import { WelcomeModal } from '@/components/shared/welcome-modal';
 import { signOutUser, getCurrentAuthUser } from '@/lib/supabase/auth';
 import { createClient } from '@/lib/supabase/client';
 import { fetchAllOrdersAdmin, deleteOrderAction } from '@/actions/order/action';
@@ -47,6 +48,36 @@ export default function App() {
   const [isSessionLoaded, setIsSessionLoaded] = useState(false);
   const [categories, setCategories] = useState<CategoryItem[]>([]);
   const [isLoadingCategories, setIsLoadingCategories] = useState<boolean>(true);
+
+  // Welcome modal state for customer in store
+  const [welcomeModal, setWelcomeModal] = useState<{
+    isOpen: boolean;
+    name: string;
+    role?: string;
+  }>({
+    isOpen: false,
+    name: ''
+  });
+
+  // Check for welcome modal if returning or navigating to store
+  useEffect(() => {
+    if (currentRoute === '(store)') {
+      try {
+        const stored = sessionStorage.getItem('bloom_welcome_user');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed.role !== 'admin') {
+            sessionStorage.removeItem('bloom_welcome_user');
+            setWelcomeModal({
+              isOpen: true,
+              name: parsed.name || currentUser?.name || 'Patron',
+              role: parsed.role || currentUser?.role || 'customer'
+            });
+          }
+        }
+      } catch {}
+    }
+  }, [currentRoute, currentUser?.name, currentUser?.role]);
 
   // Restore persistent login from localStorage or active Supabase session
   useEffect(() => {
@@ -414,7 +445,7 @@ export default function App() {
     setIsCheckoutModalOpen(false);
     setCurrentRoute('(customer)');
     setActiveSubTab('orders');
-    notify(`Order ${newOrderId} placed successfully! 🌸`);
+    notify(`Order ${newOrderId} placed successfully! An invoice has been emailed to you. 🌸`);
     return newOrderId;
   };
 
@@ -427,6 +458,10 @@ export default function App() {
   };
 
   const handleAddToCart = (product: Product, customMessage = '') => {
+    if ((product.stock ?? 0) <= 0) {
+      notify(`"${product.name}" is currently out of stock and not available.`);
+      return;
+    }
     if (!currentUser) {
       setSelectedProduct(null);
       setLoginPromptProduct(product);
@@ -454,19 +489,16 @@ export default function App() {
 
   if (!isSessionLoaded) {
     return (
-      <div className="min-h-screen bg-[#FAF7F2] flex flex-col items-center justify-center p-6 space-y-4">
-        <div className="w-14 h-14 rounded-3xl bg-white border border-stone-200 shadow-sm flex items-center justify-center p-2.5">
+      <div className="min-h-screen bg-[#FAF7F2] flex flex-col items-center justify-center p-6">
+        <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-full overflow-hidden shadow-xl border-2 border-stone-200/80 bg-white flex items-center justify-center p-1.5 animate-pulse">
           <Image
             src="/logo.png"
             alt="Ron's Bloom Crafts"
-            width={44}
-            height={44}
-            className="w-full h-full object-contain animate-pulse"
+            width={128}
+            height={128}
+            className="w-full h-full object-contain"
+            priority
           />
-        </div>
-        <div className="flex items-center space-x-2 text-stone-600 text-xs font-mono">
-          <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#2D5A43]" />
-          <span>Restoring Ron's Atelier session...</span>
         </div>
       </div>
     );
@@ -620,7 +652,14 @@ export default function App() {
               } else {
                 setCurrentRoute('(store)');
                 setActiveSubTab('home');
-                notify(`Welcome back, ${activeUser?.name || 'Patron'}! 🌸`);
+                setWelcomeModal({
+                  isOpen: true,
+                  name: activeUser?.name || 'Patron',
+                  role: activeUser?.role || 'customer'
+                });
+                try {
+                  sessionStorage.removeItem('bloom_welcome_user');
+                } catch {}
               }
             }}
           />
@@ -687,6 +726,15 @@ export default function App() {
         userDefaultAddress={currentUser?.address}
         onUpdateUser={(updated) => setCurrentUser(updated)}
         onOrderPlaced={handlePlaceOrder}
+      />
+
+      {/* Welcome Popup Modal for Customer in Store */}
+      <WelcomeModal
+        isOpen={welcomeModal.isOpen && currentRoute === '(store)'}
+        onClose={() => setWelcomeModal((prev) => ({ ...prev, isOpen: false }))}
+        userName={welcomeModal.name}
+        role={welcomeModal.role}
+        actionLabel="Explore Store"
       />
     </div>
   );

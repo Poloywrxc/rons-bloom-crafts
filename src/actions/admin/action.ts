@@ -6,7 +6,8 @@ import {
   updateOrderPaymentStatusAction as _updateOrderPaymentStatusAction,
   deleteOrderAction as _deleteOrderAction,
   sendManualOrderEmailAction as _sendManualOrderEmailAction,
-  previewOrderEmailAction as _previewOrderEmailAction
+  previewOrderEmailAction as _previewOrderEmailAction,
+  sendOrderInvoiceEmailAction as _sendOrderInvoiceEmailAction
 } from '@/actions/order/action';
 import { OrderEmailType } from '@/lib/email/types';
 
@@ -69,5 +70,12 @@ export async function previewOrderEmailAction(
   }
 ) {
   return _previewOrderEmailAction(orderId, emailType, options);
+}
+
+export async function sendOrderInvoiceEmailAction(
+  orderId: string,
+  overrideRecipient?: string
+) {
+  return _sendOrderInvoiceEmailAction(orderId, overrideRecipient);
 }
 

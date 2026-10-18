@@ -22,7 +22,11 @@ import {
   ArrowRight,
   Phone,
   Wallet,
-  Mail
+  Mail,
+  Truck,
+  Flower2,
+  Lock,
+  Loader2
 } from 'lucide-react';
 import { Order, OrderStatus } from '@/types/order';
 import { PaymentModal } from './payment-modal';
@@ -39,16 +43,93 @@ interface OrderTableProps {
   onUpdatePaymentStatus?: (orderId: string, newPaymentStatus: string) => void;
   isLoading?: boolean;
   onRefresh?: () => void;
-  onDeleteOrder?: (orderId: string) => void;
+  onDeleteOrder?: (orderId: string) => Promise<void> | void;
 }
 
-const ORDER_STATUS_OPTIONS: OrderStatus[] = [
-  'Order Received',
-  'Floral Artistry in Progress',
-  'Out for Delivery',
-  'Delivered',
-  'Cancelled'
+export type UnifiedOrderStatus =
+  | 'Order Received'
+  | 'Payment Proof (Pending)'
+  | 'Payment Proof (Verified)'
+  | 'Payment Proof (Rejected)'
+  | 'Floral Artistry'
+  | 'Out of Delivery'
+  | 'Delivered'
+  | 'Canceled';
+
+export interface StageOption {
+  value: UnifiedOrderStatus;
+  label: string;
+  stage: number;
+}
+
+export const STAGE_OPTIONS: StageOption[] = [
+  { value: 'Order Received', label: 'Order Received', stage: 1 },
+  { value: 'Payment Proof (Pending)', label: 'Payment Proof (Pending)', stage: 2 },
+  { value: 'Payment Proof (Verified)', label: 'Payment Proof (Verified)', stage: 2 },
+  { value: 'Payment Proof (Rejected)', label: 'Payment Proof (Rejected)', stage: 2 },
+  { value: 'Floral Artistry', label: 'Floral Artistry', stage: 3 },
+  { value: 'Out of Delivery', label: 'Out of Delivery', stage: 4 },
+  { value: 'Delivered', label: 'Delivered', stage: 5 },
+  { value: 'Canceled', label: 'Canceled', stage: 99 }
 ];
+
+export function getOrderStage(order: Order): number {
+  const st = (order.status || '').toLowerCase();
+  const ps = (order.paymentStatus || '').toLowerCase();
+
+  if (st.includes('cancel')) return 99;
+  if (st.includes('deliver') && !st.includes('out')) return 5;
+  if (st.includes('out') || st.includes('delivery')) return 4;
+  if (st.includes('floral') || st.includes('artistry') || st.includes('progress')) return 3;
+
+  if (ps.includes('verified') || ps.includes('reject') || ps.includes('proof') || ps.includes('pending') || order.paymentProof) {
+    return 2;
+  }
+
+  return 1;
+}
+
+export function getOrderDropdownValue(order: Order): UnifiedOrderStatus {
+  const st = (order.status || '').toLowerCase();
+  const ps = (order.paymentStatus || '').toLowerCase();
+
+  if (st.includes('cancel')) return 'Canceled';
+  if (st.includes('deliver') && !st.includes('out')) return 'Delivered';
+  if (st.includes('out') || st.includes('delivery')) return 'Out of Delivery';
+  if (st.includes('floral') || st.includes('artistry') || st.includes('progress')) return 'Floral Artistry';
+
+  if (ps.includes('verified')) return 'Payment Proof (Verified)';
+  if (ps.includes('reject')) return 'Payment Proof (Rejected)';
+  if (ps.includes('proof') || ps.includes('pending') || order.paymentProof) return 'Payment Proof (Pending)';
+
+  return 'Order Received';
+}
+
+export function getLocalDateString(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+export type ScheduleColorCategory = 'cancelled' | 'today' | 'tomorrow' | 'upcoming';
+
+export function getScheduleCategory(order: Order, todayStr: string, tomorrowStr: string): ScheduleColorCategory {
+  const isCancelled = order.status === 'Cancelled' || (order.status || '').toLowerCase().includes('cancel');
+  if (isCancelled) return 'cancelled';
+
+  const raw = (order.deliveryDate || '').trim();
+  const dateMatch = raw.match(/\d{4}-\d{2}-\d{2}/);
+  const normalizedDate = dateMatch ? dateMatch[0] : raw;
+
+  if (normalizedDate === todayStr) {
+    return 'today';
+  }
+  if (normalizedDate === tomorrowStr) {
+    return 'tomorrow';
+  }
+  return 'upcoming';
+}
 
 export function OrderTable({
   orders,
@@ -61,8 +142,14 @@ export function OrderTable({
   const [selectedPaymentOrder, setSelectedPaymentOrder] = useState<Order | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
-  const [paymentFilter, setPaymentFilter] = useState<string>('All');
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const todayStr = useMemo(() => getLocalDateString(new Date()), []);
+  const tomorrowStr = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return getLocalDateString(d);
+  }, []);
 
   // Modal State for Order Cancellation & Customer Refund Process
   const [cancellingOrder, setCancellingOrder] = useState<Order | null>(null);
@@ -75,6 +162,21 @@ export function OrderTable({
   const [emailModalOrder, setEmailModalOrder] = useState<Order | null>(null);
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [emailModalInitialType, setEmailModalInitialType] = useState<OrderEmailType>('payment_verified');
+
+  // Confirm Delete Order Modal State
+  const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleConfirmDelete = async () => {
+    if (!deletingOrder || !onDeleteOrder) return;
+    setIsDeleting(true);
+    try {
+      await onDeleteOrder(deletingOrder.id);
+      setDeletingOrder(null);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const handleManualRefresh = async () => {
     if (!onRefresh) return;
@@ -96,7 +198,7 @@ export function OrderTable({
   };
 
   const handleStatusChange = (order: Order, newStatus: string) => {
-    if (newStatus === 'Cancelled') {
+    if (newStatus === 'Cancelled' || newStatus === 'Canceled') {
       // Intercept transition to Cancelled: ask for GCash/Maya selection and number
       setCancellingOrder(order);
       setSelectedRefundMethod((order.refundMethod as 'GCash' | 'Maya') || 'GCash');
@@ -107,6 +209,63 @@ export function OrderTable({
       setRefundError(null);
     } else {
       onUpdateStatus(order.id, newStatus);
+    }
+  };
+
+  const handleUnifiedStatusChange = (order: Order, newValue: string) => {
+    if (newValue === 'Canceled' || newValue === 'Cancelled') {
+      handleStatusChange(order, 'Cancelled');
+      return;
+    }
+
+    if (newValue === 'Payment Proof (Verified)') {
+      if (onUpdatePaymentStatus) {
+        onUpdatePaymentStatus(order.id, 'Verified & Cleared');
+      }
+      if (order.status !== 'Order Received' && order.status !== 'Floral Artistry in Progress') {
+        onUpdateStatus(order.id, 'Order Received');
+      }
+      return;
+    }
+
+    if (newValue === 'Payment Proof (Pending)') {
+      if (onUpdatePaymentStatus) {
+        onUpdatePaymentStatus(order.id, 'Proof Uploaded (Pending Admin)');
+      }
+      if (order.status !== 'Order Received') {
+        onUpdateStatus(order.id, 'Order Received');
+      }
+      return;
+    }
+
+    if (newValue === 'Payment Proof (Rejected)') {
+      if (onUpdatePaymentStatus) {
+        onUpdatePaymentStatus(order.id, 'Payment Rejected');
+      }
+      return;
+    }
+
+    if (newValue === 'Floral Artistry') {
+      onUpdateStatus(order.id, 'Floral Artistry in Progress');
+      if (onUpdatePaymentStatus && !order.paymentStatus?.toLowerCase().includes('verified')) {
+        onUpdatePaymentStatus(order.id, 'Verified & Cleared');
+      }
+      return;
+    }
+
+    if (newValue === 'Out of Delivery') {
+      onUpdateStatus(order.id, 'Out for Delivery');
+      return;
+    }
+
+    if (newValue === 'Delivered') {
+      onUpdateStatus(order.id, 'Delivered');
+      return;
+    }
+
+    if (newValue === 'Order Received') {
+      onUpdateStatus(order.id, 'Order Received');
+      return;
     }
   };
 
@@ -125,7 +284,7 @@ export function OrderTable({
     setCancellingOrder(null);
   };
 
-  // Filter orders by search query, status, and payment status
+  // Filter orders by search query and unified status
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
       const q = searchQuery.toLowerCase().trim();
@@ -137,36 +296,93 @@ export function OrderTable({
         (order.recipient && order.recipient.toLowerCase().includes(q)) ||
         order.items.some((it) => it.name.toLowerCase().includes(q));
 
+      const currentVal = getOrderDropdownValue(order);
       const matchesStatus =
-        statusFilter === 'All' || order.status.toLowerCase() === statusFilter.toLowerCase();
+        statusFilter === 'All' || currentVal.toLowerCase() === statusFilter.toLowerCase();
 
-      const isVerified = order.paymentStatus?.toLowerCase().includes('verified');
-      const isRejected = order.paymentStatus?.toLowerCase().includes('reject');
-      const isPending = !isVerified && !isRejected;
-
-      let matchesPayment = true;
-      if (paymentFilter === 'verified') matchesPayment = isVerified;
-      else if (paymentFilter === 'pending') matchesPayment = isPending;
-      else if (paymentFilter === 'rejected') matchesPayment = isRejected;
-
-      return matchesSearch && matchesStatus && matchesPayment;
+      return matchesSearch && matchesStatus;
     });
-  }, [orders, searchQuery, statusFilter, paymentFilter]);
+  }, [orders, searchQuery, statusFilter]);
 
-  // Counts for summary pills
+  // Counts for summary pills & filter options
   const statusCounts = useMemo(() => {
     return {
       all: orders.length,
-      received: orders.filter((o) => o.status === 'Order Received').length,
-      inProgress: orders.filter((o) => o.status === 'Floral Artistry in Progress').length,
-      delivery: orders.filter((o) => o.status === 'Out for Delivery').length,
-      delivered: orders.filter((o) => o.status === 'Delivered').length,
-      cancelled: orders.filter((o) => o.status === 'Cancelled').length,
-      pendingPayment: orders.filter(
-        (o) => !o.paymentStatus?.toLowerCase().includes('verified') && !o.paymentStatus?.toLowerCase().includes('reject')
-      ).length
+      received: orders.filter((o) => getOrderDropdownValue(o) === 'Order Received').length,
+      proofPending: orders.filter((o) => getOrderDropdownValue(o) === 'Payment Proof (Pending)').length,
+      proofVerified: orders.filter((o) => getOrderDropdownValue(o) === 'Payment Proof (Verified)').length,
+      proofRejected: orders.filter((o) => getOrderDropdownValue(o) === 'Payment Proof (Rejected)').length,
+      floralArtistry: orders.filter((o) => getOrderDropdownValue(o) === 'Floral Artistry').length,
+      outOfDelivery: orders.filter((o) => getOrderDropdownValue(o) === 'Out of Delivery').length,
+      delivered: orders.filter((o) => getOrderDropdownValue(o) === 'Delivered').length,
+      cancelled: orders.filter((o) => getOrderDropdownValue(o) === 'Canceled').length
     };
   }, [orders]);
+
+  // Render Status Badge Pill
+  const renderStatusPill = (order: Order) => {
+    const currentVal = getOrderDropdownValue(order);
+
+    switch (currentVal) {
+      case 'Canceled':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-900 border border-rose-300">
+            <XCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+            <span>{order.refundNumber ? `Canceled (${order.refundMethod || 'GCash'})` : 'Canceled'}</span>
+          </span>
+        );
+      case 'Delivered':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-900 border border-emerald-300">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+            <span>Delivered</span>
+          </span>
+        );
+      case 'Out of Delivery':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-sky-50 text-sky-800 border border-sky-200">
+            <Truck className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+            <span>Out of Delivery</span>
+          </span>
+        );
+      case 'Floral Artistry':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-purple-50 text-purple-900 border border-purple-200">
+            <Flower2 className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+            <span>Floral Artistry</span>
+          </span>
+        );
+      case 'Payment Proof (Verified)':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span>Payment Proof (Verified)</span>
+          </span>
+        );
+      case 'Payment Proof (Rejected)':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-rose-50 text-rose-800 border border-rose-200">
+            <XCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+            <span>Payment Proof (Rejected)</span>
+          </span>
+        );
+      case 'Payment Proof (Pending)':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+            <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+            <span>Payment Proof (Pending)</span>
+          </span>
+        );
+      case 'Order Received':
+      default:
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-stone-100 text-stone-800 border border-stone-200">
+            <Clock className="w-3.5 h-3.5 text-stone-500 shrink-0" />
+            <span>Order Received</span>
+          </span>
+        );
+    }
+  };
 
   return (
     <>
@@ -178,14 +394,6 @@ export function OrderTable({
               <h3 className="font-serif font-bold text-stone-900 text-lg sm:text-xl">
                 Active Floral Orders
               </h3>
-              {/* Database Live Indicator */}
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200/80">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
-                </span>
-                <span>Database Live</span>
-              </span>
             </div>
             <p className="text-xs text-stone-500">
               Live order pipeline synced with your Supabase database &bull; Real-time status dispatcher
@@ -206,23 +414,9 @@ export function OrderTable({
                     isLoading || isRefreshing ? 'animate-spin text-[#2D5A43]' : ''
                   }`}
                 />
-                <span>{isLoading || isRefreshing ? 'Syncing...' : 'Refresh DB'}</span>
+                <span>{isLoading || isRefreshing ? 'Syncing...' : 'Refresh'}</span>
               </button>
             )}
-
-            <button
-              type="button"
-              onClick={() => {
-                setEmailModalOrder(null);
-                setEmailModalInitialType('payment_verified');
-                setIsEmailModalOpen(true);
-              }}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 shadow-2xs transition cursor-pointer"
-              title="Preview & test all 7 lifecycle email templates"
-            >
-              <Mail className="w-3.5 h-3.5 text-emerald-700" />
-              <span>Email Templates</span>
-            </button>
 
             <span className="text-xs font-semibold text-stone-700 bg-white px-3 py-1.5 rounded-xl border border-stone-200 shadow-2xs">
               <strong className="font-mono text-[#2D5A43]">{orders.length}</strong> Registered Orders
@@ -265,35 +459,22 @@ export function OrderTable({
               >
                 <option value="All">All Statuses ({orders.length})</option>
                 <option value="Order Received">Order Received ({statusCounts.received})</option>
-                <option value="Floral Artistry in Progress">Floral Artistry ({statusCounts.inProgress})</option>
-                <option value="Out for Delivery">Out for Delivery ({statusCounts.delivery})</option>
+                <option value="Payment Proof (Pending)">Payment Proof (Pending) ({statusCounts.proofPending})</option>
+                <option value="Payment Proof (Verified)">Payment Proof (Verified) ({statusCounts.proofVerified})</option>
+                <option value="Payment Proof (Rejected)">Payment Proof (Rejected) ({statusCounts.proofRejected})</option>
+                <option value="Floral Artistry">Floral Artistry ({statusCounts.floralArtistry})</option>
+                <option value="Out of Delivery">Out of Delivery ({statusCounts.outOfDelivery})</option>
                 <option value="Delivered">Delivered ({statusCounts.delivered})</option>
-                <option value="Cancelled">Cancelled ({statusCounts.cancelled})</option>
+                <option value="Canceled">Canceled ({statusCounts.cancelled})</option>
               </select>
             </div>
 
-            {/* Payment Filter */}
-            <div className="flex items-center space-x-1.5">
-              <span className="text-[11px] font-medium text-stone-400">Payment:</span>
-              <select
-                value={paymentFilter}
-                onChange={(e) => setPaymentFilter(e.target.value)}
-                className="bg-stone-50 border border-stone-200 rounded-xl px-2.5 py-1.5 text-xs text-stone-700 font-medium focus:ring-1 focus:ring-[#2D5A43] cursor-pointer"
-              >
-                <option value="All">All Payments</option>
-                <option value="verified">Verified & Cleared</option>
-                <option value="pending">Pending Verification</option>
-                <option value="rejected">Rejected</option>
-              </select>
-            </div>
-
-            {(searchQuery || statusFilter !== 'All' || paymentFilter !== 'All') && (
+            {(searchQuery || statusFilter !== 'All') && (
               <button
                 type="button"
                 onClick={() => {
                   setSearchQuery('');
                   setStatusFilter('All');
-                  setPaymentFilter('All');
                 }}
                 className="text-xs text-[#2D5A43] hover:underline font-medium px-2 py-1"
               >
@@ -301,6 +482,34 @@ export function OrderTable({
               </button>
             )}
           </div>
+        </div>
+
+        {/* Schedule Color Coding Legend Banner */}
+        <div className="px-5 py-2.5 bg-stone-50/80 border-b border-stone-200 flex flex-wrap items-center justify-between gap-3 text-[11px]">
+          <div className="flex flex-wrap items-center gap-3 sm:gap-5">
+            <span className="font-bold text-stone-500 uppercase tracking-wider text-[10px]">
+              Row Color Code:
+            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-full bg-rose-500 border border-rose-600 shadow-2xs"></span>
+              <span className="font-semibold text-rose-800">Red: Cancelled</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-full bg-emerald-500 border border-emerald-600 shadow-2xs"></span>
+              <span className="font-semibold text-emerald-800">Green: Today's Schedule</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-full bg-amber-400 border border-amber-500 shadow-2xs"></span>
+              <span className="font-semibold text-amber-900">Yellow: Tomorrow Schedule</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-full bg-stone-400 border border-stone-500 shadow-2xs"></span>
+              <span className="font-semibold text-stone-700">Grey: Upcoming Schedule</span>
+            </div>
+          </div>
+          <span className="text-[10px] text-stone-400 font-mono">
+            Today: {todayStr} &bull; Tomorrow: {tomorrowStr}
+          </span>
         </div>
 
         {/* Orders Table Content */}
@@ -313,9 +522,8 @@ export function OrderTable({
                 <th className="p-4 font-bold">Bouquet Items</th>
                 <th className="p-4 font-bold">Scheduled Date</th>
                 <th className="p-4 font-bold">Total Amount</th>
-                <th className="p-4 font-bold">Payment Status</th>
+                <th className="p-4 font-bold">Status</th>
                 <th className="p-4 font-bold">Transaction</th>
-                <th className="p-4 font-bold">Status Transition</th>
                 {onDeleteOrder && <th className="p-4 font-bold text-center">Action</th>}
               </tr>
             </thead>
@@ -343,13 +551,10 @@ export function OrderTable({
                       <div className="h-4 bg-stone-200 rounded-md w-16"></div>
                     </td>
                     <td className="p-4">
-                      <div className="h-6 bg-stone-200 rounded-full w-24"></div>
+                      <div className="h-6 bg-stone-200 rounded-full w-28"></div>
                     </td>
                     <td className="p-4">
-                      <div className="h-7 bg-stone-200 rounded-xl w-24"></div>
-                    </td>
-                    <td className="p-4">
-                      <div className="h-7 bg-stone-200 rounded-lg w-32"></div>
+                      <div className="h-7 bg-stone-200 rounded-xl w-48"></div>
                     </td>
                     {onDeleteOrder && (
                       <td className="p-4 text-center">
@@ -361,7 +566,7 @@ export function OrderTable({
               ) : orders.length === 0 ? (
                 // Empty Database State
                 <tr>
-                  <td colSpan={onDeleteOrder ? 9 : 8} className="p-12 text-center">
+                  <td colSpan={onDeleteOrder ? 8 : 7} className="p-12 text-center">
                     <div className="max-w-md mx-auto space-y-3">
                       <div className="w-14 h-14 mx-auto rounded-3xl bg-emerald-50 border border-emerald-100 text-[#2D5A43] flex items-center justify-center shadow-xs">
                         <ShoppingBag className="w-7 h-7" />
@@ -390,7 +595,7 @@ export function OrderTable({
               ) : filteredOrders.length === 0 ? (
                 // No Results for Filter
                 <tr>
-                  <td colSpan={onDeleteOrder ? 9 : 8} className="p-10 text-center">
+                  <td colSpan={onDeleteOrder ? 8 : 7} className="p-10 text-center">
                     <div className="space-y-2">
                       <AlertCircle className="w-8 h-8 text-amber-500 mx-auto" />
                       <p className="text-sm font-semibold text-stone-800">
@@ -404,7 +609,6 @@ export function OrderTable({
                         onClick={() => {
                           setSearchQuery('');
                           setStatusFilter('All');
-                          setPaymentFilter('All');
                         }}
                         className="text-xs font-semibold text-[#2D5A43] underline pt-1 cursor-pointer"
                       >
@@ -415,30 +619,40 @@ export function OrderTable({
                 </tr>
               ) : (
                 filteredOrders.map((order) => {
-                  const isCancelled = order.status === 'Cancelled' || order.status.toLowerCase().includes('cancel');
-                  const isVerified = order.paymentStatus?.toLowerCase().includes('verified');
-                  const isRejected = order.paymentStatus?.toLowerCase().includes('reject');
+                  const category = getScheduleCategory(order, todayStr, tomorrowStr);
+                  const isCancelled = category === 'cancelled';
+                  const isDelivered = order.status === 'Delivered' || order.status.toLowerCase().includes('deliver');
+
+                  let rowStyle = 'bg-stone-50/70 hover:bg-stone-100/90 border-l-4 border-l-stone-400 text-stone-900';
+                  if (category === 'cancelled') {
+                    rowStyle = 'bg-rose-50/90 hover:bg-rose-100/90 border-l-4 border-l-rose-500 text-stone-900';
+                  } else if (category === 'today') {
+                    rowStyle = 'bg-emerald-50/80 hover:bg-emerald-100/90 border-l-4 border-l-emerald-600 text-stone-900';
+                  } else if (category === 'tomorrow') {
+                    rowStyle = 'bg-amber-50/85 hover:bg-amber-100/90 border-l-4 border-l-amber-500 text-stone-900';
+                  }
 
                   return (
                     <tr
                       key={order.id}
-                      className={`transition-colors ${
-                        isCancelled
-                          ? 'bg-rose-50/90 hover:bg-rose-100/90 border-l-4 border-l-rose-500 text-stone-900'
-                          : 'hover:bg-stone-50/80'
-                      }`}
+                      className={`transition-colors ${rowStyle}`}
                     >
                       {/* Order Ref */}
                       <td className="p-4 font-mono font-bold">
                         <div className="flex items-center gap-1.5">
-                          <span className={`block ${isCancelled ? 'text-rose-700 font-extrabold' : 'text-[#2D5A43]'}`}>
+                          <span
+                            className={`block ${
+                              category === 'cancelled'
+                                ? 'text-rose-700 font-extrabold'
+                                : category === 'today'
+                                ? 'text-emerald-800 font-extrabold'
+                                : category === 'tomorrow'
+                                ? 'text-amber-900 font-extrabold'
+                                : 'text-[#2D5A43]'
+                            }`}
+                          >
                             {order.id}
                           </span>
-                          {isCancelled && (
-                            <span className="text-[9px] font-sans font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-rose-200 text-rose-800">
-                              Cancelled
-                            </span>
-                          )}
                         </div>
                         <span className="text-[10px] text-stone-400 font-sans font-normal block">
                           {order.date}
@@ -488,11 +702,35 @@ export function OrderTable({
                         </div>
                       </td>
 
-                      {/* Scheduled Date */}
-                      <td className="p-4 text-stone-600 font-medium">
-                        <span className="block font-mono text-stone-800">
-                          {order.deliveryDate || 'Standard Delivery'}
-                        </span>
+                      {/* Scheduled Date with Color-Coded Tag */}
+                      <td className="p-4 font-medium">
+                        <div className="space-y-1">
+                          <span className="block font-mono font-bold text-stone-900">
+                            {order.deliveryDate || 'Standard Delivery'}
+                          </span>
+                          {category === 'cancelled' && (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-rose-200 text-rose-900 shadow-2xs">
+                              Cancelled
+                            </span>
+                          )}
+                          {category === 'today' && (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-emerald-200 text-emerald-950 shadow-2xs">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
+                              Today
+                            </span>
+                          )}
+                          {category === 'tomorrow' && (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-amber-200 text-amber-950 shadow-2xs">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-600"></span>
+                              Tomorrow
+                            </span>
+                          )}
+                          {category === 'upcoming' && (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-stone-200 text-stone-700 shadow-2xs">
+                              Upcoming
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Total */}
@@ -500,38 +738,14 @@ export function OrderTable({
                         ${order.total.toFixed(2)}
                       </td>
 
-                      {/* Payment Status Pill */}
+                      {/* Status Column (Formerly Payment Status) */}
                       <td className="p-4 whitespace-nowrap">
-                        {isCancelled ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-900 border border-rose-300">
-                            <XCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                            <span>
-                              {order.refundNumber
-                                ? `Refund via ${order.refundMethod || 'E-Wallet'}`
-                                : 'Cancelled (Refund Due)'}
-                            </span>
-                          </span>
-                        ) : isVerified ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                            <span>Verified & Cleared</span>
-                          </span>
-                        ) : isRejected ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-rose-50 text-rose-800 border border-rose-200">
-                            <XCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                            <span>Rejected</span>
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
-                            <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                            <span>{order.paymentStatus || 'Pending Verification'}</span>
-                          </span>
-                        )}
+                        {renderStatusPill(order)}
                       </td>
 
-                      {/* Transaction Button & Email Dispatch */}
+                      {/* Transaction Button & In-Place Status Transition (Email Button Removed) */}
                       <td className="p-4 whitespace-nowrap">
-                        <div className="flex items-center space-x-1.5">
+                        <div className="flex items-center space-x-2">
                           <button
                             type="button"
                             onClick={() => setSelectedPaymentOrder(order)}
@@ -545,45 +759,39 @@ export function OrderTable({
                             <span>Transaction</span>
                           </button>
 
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEmailModalOrder(order);
-                              let defaultType: OrderEmailType = 'payment_verified';
-                              if (order.status === 'Floral Artistry in Progress') defaultType = 'floral_artistry';
-                              else if (order.status === 'Out for Delivery') defaultType = 'out_for_delivery';
-                              else if (order.status === 'Delivered') defaultType = 'delivered';
-                              else if (order.status === 'Cancelled') defaultType = order.refundNumber ? 'refund' : 'cancelled';
-                              else if (order.paymentStatus?.toLowerCase().includes('reject')) defaultType = 'payment_rejected';
-                              else defaultType = 'payment_verified';
-                              setEmailModalInitialType(defaultType);
-                              setIsEmailModalOpen(true);
-                            }}
-                            className="p-1.5 rounded-xl text-stone-500 hover:text-[#2D5A43] hover:bg-emerald-50 border border-stone-200 bg-stone-50 transition cursor-pointer"
-                            title="Preview & Dispatch Customer Lifecycle Emails"
-                          >
-                            <Mail className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
+                          {/* Status Transition Select Dropdown with Progressive Locks */}
+                          <div className="relative">
+                            <select
+                              value={getOrderDropdownValue(order)}
+                              onChange={(e) => handleUnifiedStatusChange(order, e.target.value)}
+                              className={`py-1.5 pl-2.5 pr-7 border rounded-xl text-xs font-medium focus:ring-1 focus:ring-[#2D5A43] cursor-pointer transition appearance-none ${
+                                isCancelled
+                                  ? 'bg-rose-100 border-rose-300 text-rose-900 font-bold'
+                                  : isDelivered
+                                  ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-semibold'
+                                  : 'bg-stone-50 border-stone-300 hover:bg-stone-100 text-stone-800'
+                              }`}
+                            >
+                              {STAGE_OPTIONS.map((opt) => {
+                                const currentStage = getOrderStage(order);
+                                const isLocked = currentStage === 99 ? opt.stage !== 99 : opt.stage < currentStage;
+                                const isDisabled = isLocked || (opt.stage === 99 && currentStage === 5);
 
-                      {/* Status Transition Select */}
-                      <td className="p-4 whitespace-nowrap">
-                        <select
-                          value={order.status}
-                          onChange={(e) => handleStatusChange(order, e.target.value)}
-                          className={`p-1.5 border rounded-lg text-xs font-medium focus:ring-1 focus:ring-[#2D5A43] cursor-pointer transition ${
-                            isCancelled
-                              ? 'bg-rose-100 border-rose-300 text-rose-900 font-bold hover:bg-rose-200'
-                              : 'bg-stone-50 border-stone-300 hover:bg-stone-100'
-                          }`}
-                        >
-                          {ORDER_STATUS_OPTIONS.map((statusOpt) => (
-                            <option key={statusOpt} value={statusOpt}>
-                              {statusOpt}
-                            </option>
-                          ))}
-                        </select>
+                                return (
+                                  <option
+                                    key={opt.value}
+                                    value={opt.value}
+                                    disabled={isDisabled}
+                                    className={isLocked ? 'text-stone-400 bg-stone-100 italic' : ''}
+                                  >
+                                    {isLocked ? `🔒 ${opt.label}` : opt.label}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                            <ChevronDown className="w-3.5 h-3.5 text-stone-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          </div>
+                        </div>
                       </td>
 
                       {/* Delete Action if handler provided */}
@@ -591,11 +799,7 @@ export function OrderTable({
                         <td className="p-4 text-center whitespace-nowrap">
                           <button
                             type="button"
-                            onClick={() => {
-                              if (confirm(`Are you sure you want to delete order ${order.id} from the database?`)) {
-                                onDeleteOrder(order.id);
-                              }
-                            }}
+                            onClick={() => setDeletingOrder(order)}
                             className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
                             title="Delete order record"
                           >
@@ -779,12 +983,123 @@ export function OrderTable({
         </div>
       )}
 
+      {/* CONFIRM DELETE ORDER POPUP MODAL */}
+      {deletingOrder && (
+        <div
+          onClick={() => !isDeleting && setDeletingOrder(null)}
+          className="fixed inset-0 z-50 bg-stone-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-stone-200 overflow-hidden animate-in zoom-in-95 duration-200"
+          >
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-rose-50 via-rose-50/50 to-stone-50 border-b border-rose-100 p-5 flex items-start justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-2xl bg-rose-500 text-white flex items-center justify-center shadow-xs shrink-0">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-serif font-bold text-stone-900 text-base">
+                    Delete Order Record
+                  </h3>
+                  <p className="text-xs text-rose-700 font-medium">
+                    Permanent Database Removal
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => !isDeleting && setDeletingOrder(null)}
+                disabled={isDeleting}
+                className="p-1.5 text-stone-400 hover:text-stone-700 rounded-xl hover:bg-stone-100 transition cursor-pointer disabled:opacity-50"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 space-y-4">
+              {/* Warning Notice */}
+              <div className="p-3.5 bg-rose-50/90 rounded-2xl border border-rose-200 text-xs text-rose-950 space-y-1">
+                <p className="font-bold flex items-center gap-1.5 text-rose-800">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                  Warning: This action cannot be undone
+                </p>
+                <p className="leading-relaxed text-[11px] text-stone-700">
+                  Are you sure you want to permanently delete order <strong className="font-mono text-stone-900 font-bold">{deletingOrder.id}</strong> from the database? All order items and customer tracking for this transaction will be purged.
+                </p>
+              </div>
+
+              {/* Order Details Preview */}
+              <div className="bg-stone-50 rounded-2xl p-4 border border-stone-200 text-xs space-y-2.5">
+                <div className="flex justify-between items-center pb-2.5 border-b border-stone-200/80">
+                  <div>
+                    <span className="text-[10px] text-stone-400 uppercase tracking-wider block font-bold">Order Reference</span>
+                    <span className="font-mono font-bold text-stone-900">{deletingOrder.id}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] text-stone-400 uppercase tracking-wider block font-bold">Total Amount</span>
+                    <span className="font-serif font-bold text-stone-900 text-sm">${deletingOrder.total.toFixed(2)}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-[11px]">
+                  <div>
+                    <span className="text-[10px] text-stone-400 uppercase tracking-wider block font-bold">Customer</span>
+                    <span className="font-semibold text-stone-800 truncate block">{deletingOrder.customer}</span>
+                    <span className="text-stone-500 text-[10px] truncate block">{deletingOrder.email}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-stone-400 uppercase tracking-wider block font-bold">Current Status</span>
+                    <span className="inline-block mt-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-stone-200 text-stone-700">
+                      {deletingOrder.status || 'Active'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="p-4 bg-stone-50 border-t border-stone-100 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDeletingOrder(null)}
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-stone-600 hover:bg-stone-200/70 transition cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+                className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-xs transition cursor-pointer disabled:opacity-50"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete Order</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Payment & Verification Modal */}
       <PaymentModal
         isOpen={!!selectedPaymentOrder}
         onClose={() => setSelectedPaymentOrder(null)}
         order={selectedPaymentOrder}
         onUpdatePaymentStatus={handleModalUpdatePaymentStatus}
+        onUpdateStatus={onUpdateStatus}
       />
 
       {/* Email Preview & Dispatcher Modal */}

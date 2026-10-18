@@ -316,11 +316,17 @@ export function BestSellerSlider({
                     <span>Quick View</span>
                   </button>
 
-                  {/* Freshness Badge */}
-                  {product.freshness && (
-                    <span className="absolute bottom-2.5 left-2.5 sm:bottom-3 sm:left-3 z-10 bg-[#2D5A43]/90 backdrop-blur-xs text-white text-[9px] sm:text-[10px] uppercase font-bold tracking-wider px-2 sm:px-2.5 py-0.5 rounded-full shadow-xs truncate max-w-[170px]">
-                      {product.freshness}
+                  {/* Out of Stock or Freshness Badge */}
+                  {(product.stock ?? 0) <= 0 ? (
+                    <span className="absolute top-2.5 left-2.5 sm:top-3 sm:left-3 z-10 bg-rose-600 text-white text-[9px] sm:text-[11px] uppercase font-extrabold tracking-wider px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full shadow-md">
+                      NOT AVAILABLE
                     </span>
+                  ) : (
+                    product.freshness && (
+                      <span className="absolute bottom-2.5 left-2.5 sm:bottom-3 sm:left-3 z-10 bg-[#2D5A43]/90 backdrop-blur-xs text-white text-[9px] sm:text-[10px] uppercase font-bold tracking-wider px-2 sm:px-2.5 py-0.5 rounded-full shadow-xs truncate max-w-[170px]">
+                        {product.freshness}
+                      </span>
+                    )
                   )}
                 </div>
 
@@ -364,19 +370,33 @@ export function BestSellerSlider({
                       <span className="font-serif text-lg sm:text-2xl font-bold text-[#2D5A43] block truncate">
                         ₱{product.price.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                       </span>
+                      {(product.stock ?? 0) <= 0 && (
+                        <span className="text-[10px] text-rose-600 font-bold block">Not Available</span>
+                      )}
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={e => {
-                        e.stopPropagation();
-                        onAddToCart(product);
-                      }}
-                      className="shrink-0 whitespace-nowrap h-9 px-4 bg-[#2D5A43] hover:bg-emerald-800 text-white rounded-full text-xs font-semibold transition-all shadow-xs hover:shadow-md inline-flex items-center justify-center gap-1.5 cursor-pointer transform active:scale-95"
-                    >
-                      <Plus className="w-3.5 h-3.5 shrink-0" />
-                      <span>Add to Tote</span>
-                    </button>
+                    {(() => {
+                      const isOutOfStock = (product.stock ?? 0) <= 0;
+                      return (
+                        <button
+                          type="button"
+                          disabled={isOutOfStock}
+                          onClick={e => {
+                            e.stopPropagation();
+                            if (isOutOfStock) return;
+                            onAddToCart(product);
+                          }}
+                          className={`shrink-0 whitespace-nowrap h-9 px-4 rounded-full text-xs font-semibold transition-all inline-flex items-center justify-center gap-1.5 ${
+                            isOutOfStock
+                              ? 'bg-stone-200 text-rose-600 border border-stone-300 cursor-not-allowed'
+                              : 'bg-[#2D5A43] hover:bg-emerald-800 text-white shadow-xs hover:shadow-md cursor-pointer transform active:scale-95'
+                          }`}
+                        >
+                          {!isOutOfStock && <Plus className="w-3.5 h-3.5 shrink-0" />}
+                          <span>{isOutOfStock ? 'Not Available' : 'Add to Tote'}</span>
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>

@@ -19,14 +19,16 @@ export function ProductCard({
   onToggleWishlist,
   onSelectProduct
 }: ProductCardProps) {
+  const isOutOfStock = (product.stock ?? 0) <= 0;
+
   return (
-    <div className="bg-white rounded-2xl sm:rounded-3xl overflow-hidden border border-stone-200/90 hover:shadow-xl transition group flex flex-col justify-between">
+    <div className={`bg-white rounded-2xl sm:rounded-3xl overflow-hidden border border-stone-200/90 hover:shadow-xl transition group flex flex-col justify-between ${isOutOfStock ? 'opacity-95' : ''}`}>
       {/* Image & Wishlist Toggle */}
       <div className="relative aspect-square sm:aspect-4/3 overflow-hidden bg-stone-100">
         <img
           src={product.image}
           alt={product.name}
-          className="w-full h-full object-cover group-hover:scale-105 transition duration-500 cursor-pointer"
+          className={`w-full h-full object-cover group-hover:scale-105 transition duration-500 cursor-pointer ${isOutOfStock ? 'grayscale-[20%]' : ''}`}
           onClick={() => onSelectProduct(product)}
         />
         <button
@@ -51,9 +53,17 @@ export function ProductCard({
           <span>Quick View</span>
         </button>
 
-        <span className="hidden sm:inline-block absolute top-3 left-3 bg-[#2D5A43]/90 text-white text-[10px] uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-full">
-          {product.freshness}
-        </span>
+        {isOutOfStock ? (
+          <span className="absolute top-2 left-2 sm:top-3 sm:left-3 bg-rose-600 text-white text-[9px] sm:text-[11px] uppercase font-extrabold tracking-wider px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full shadow-md z-10">
+            NOT AVAILABLE
+          </span>
+        ) : (
+          product.freshness && (
+            <span className="hidden sm:inline-block absolute top-3 left-3 bg-[#2D5A43]/90 text-white text-[10px] uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-full">
+              {product.freshness}
+            </span>
+          )
+        )}
       </div>
 
       {/* Content */}
@@ -85,17 +95,34 @@ export function ProductCard({
           <div>
             <span className="hidden sm:block text-[10px] text-stone-400">Handcrafted Price</span>
             <span className="font-serif text-xs sm:text-base md:text-lg font-bold text-[#2D5A43]">${product.price.toFixed(2)}</span>
+            {isOutOfStock && (
+              <span className="text-[10px] text-rose-600 font-bold block sm:hidden">Not Available</span>
+            )}
           </div>
 
           <button
             type="button"
-            onClick={() => onAddToCart(product)}
-            className="w-7 h-7 sm:w-auto sm:h-auto p-1 sm:px-4 sm:py-2 bg-[#FAF7F2] hover:bg-[#2D5A43] text-stone-800 hover:text-white border border-stone-300 hover:border-transparent rounded-full text-xs font-semibold transition flex items-center justify-center space-x-1.5 shadow-xs cursor-pointer shrink-0 active:scale-95"
-            aria-label={`Add ${product.name} to Tote`}
-            title="Add to Tote"
+            disabled={isOutOfStock}
+            onClick={() => {
+              if (isOutOfStock) return;
+              onAddToCart(product);
+            }}
+            className={`w-auto p-1 sm:px-3 sm:py-2 rounded-full text-[11px] sm:text-xs font-semibold transition flex items-center justify-center space-x-1 shrink-0 ${
+              isOutOfStock
+                ? 'bg-stone-200 text-rose-600 border border-stone-300 cursor-not-allowed px-2'
+                : 'bg-[#FAF7F2] hover:bg-[#2D5A43] text-stone-800 hover:text-white border border-stone-300 hover:border-transparent shadow-xs cursor-pointer active:scale-95 px-2.5 sm:px-4'
+            }`}
+            aria-label={isOutOfStock ? `${product.name} is not available` : `Add ${product.name} to Tote`}
+            title={isOutOfStock ? "Not Available" : "Add to Tote"}
           >
-            <Plus className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Add to Tote</span>
+            {isOutOfStock ? (
+              <span className="font-bold text-[10px] sm:text-[11px] uppercase tracking-wide">Not Available</span>
+            ) : (
+              <>
+                <Plus className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Add to Tote</span>
+              </>
+            )}
           </button>
         </div>
       </div>

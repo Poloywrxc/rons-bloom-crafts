@@ -19,7 +19,6 @@ import {
   Phone,
   ShieldCheck,
   ExternalLink,
-  Database,
   Edit3,
   Save,
   Loader2,
@@ -69,7 +68,7 @@ interface CustomerPortalViewProps {
     refundTotal?: number,
     refundDetails?: { refundMethod: 'GCash' | 'Maya' | string; refundNumber: string; notes?: string }
   ) => Promise<void> | void;
-  onSubmitReview?: (review: { bouquet: string; rating: number; comment: string }) => Promise<void> | void;
+  onSubmitReview?: (review: { bouquet: string; rating: number; comment: string; orderId?: string }) => Promise<void> | void;
   onRefreshOrders?: () => Promise<void> | void;
   isDbConnected?: boolean;
 }
@@ -107,6 +106,7 @@ export function CustomerPortalView({
   const [editPhone, setEditPhone] = useState(user.phone);
   const [editAddress, setEditAddress] = useState(user.address);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+
 
   useEffect(() => {
     setEditName(user.name);
@@ -182,6 +182,7 @@ export function CustomerPortalView({
 
   // Popup Modal State for Account, Orders, Wishlist, Completed, Cancelled
   const [activeModal, setActiveModal] = useState<string | null>(null);
+  const [selectedReviewOrder, setSelectedReviewOrder] = useState<Order | null>(null);
 
   // Sync if activeTab is changed from outside (e.g., from Navbar Wishlist or Account)
   const prevTabRef = useRef(activeTab);
@@ -279,26 +280,34 @@ export function CustomerPortalView({
 
   const handleReorder = (order: Order) => {
     let count = 0;
+    let unavailableCount = 0;
     order.items.forEach(item => {
       const matched = products.find(p => p.name.toLowerCase() === item.name.toLowerCase());
       if (matched) {
-        for (let i = 0; i < item.qty; i++) {
-          onAddToCart(matched);
+        if ((matched.stock ?? 0) <= 0) {
+          unavailableCount++;
+        } else {
+          for (let i = 0; i < item.qty; i++) {
+            onAddToCart(matched);
+          }
+          count += item.qty;
         }
-        count += item.qty;
       }
     });
 
     if (count > 0) {
-      notify(`Added ${count} items from ${order.id} to your basket! 🌸`);
+      notify(`Added ${count} items from ${order.id} to your basket! 🌸` + (unavailableCount > 0 ? ` (${unavailableCount} unavailable/out-of-stock items skipped)` : ''));
       setActiveModal(null);
       setActiveTab('checkout');
+    } else if (unavailableCount > 0) {
+      notify(`Items from ${order.id} are currently out of stock and not available.`);
     } else {
       notify(`Stems from ${order.id} re-added to your cart.`);
     }
   };
 
   const handleRateOrder = (order: Order) => {
+    setSelectedReviewOrder(order);
     setActiveModal('reviews');
     setActiveTab('reviews');
     notify(`Ready to leave a floral review for ${order.id}! ⭐`);
@@ -422,7 +431,7 @@ export function CustomerPortalView({
     onClearCart();
     setActiveTab('orders');
     setActiveModal('orders');
-    notify(`Order ${newOrderId} placed successfully! 🌸`);
+    notify(`Order ${newOrderId} placed successfully! An invoice has been emailed to you. 🌸`);
     return newOrderId;
   };
 
@@ -492,10 +501,6 @@ export function CustomerPortalView({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <span className="bg-emerald-50 text-emerald-800 text-xs px-3.5 py-1.5 rounded-full font-medium border border-emerald-200/80 shadow-2xs flex items-center space-x-1.5">
-            <Database className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Database: Live Supabase</span>
-          </span>
           <span className="bg-emerald-100 text-[#2D5A43] text-xs px-3.5 py-1.5 rounded-full font-medium border border-emerald-200/60 shadow-2xs flex items-center space-x-1.5">
             <span className="w-2 h-2 rounded-full bg-[#2D5A43] inline-block animate-pulse" />
             <span>Verified Florist Patron</span>
@@ -745,10 +750,6 @@ export function CustomerPortalView({
                       <h3 className="font-serif text-base sm:text-lg font-bold text-stone-900">
                         Customer Profile
                       </h3>
-                      <span className="flex items-center space-x-1 text-[10px] font-mono font-medium px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        <Database className="w-3 h-3 text-emerald-600" />
-                        <span>Supabase DB</span>
-                      </span>
                     </div>
 
                     {!isEditingProfile ? (
@@ -770,14 +771,6 @@ export function CustomerPortalView({
                             <span className="text-stone-500 block">Saved Delivery Address</span>
                             <span className="font-semibold text-stone-800 break-words">{user.address || 'Not specified'}</span>
                           </div>
-                          {user.id && (
-                            <div className="pt-1">
-                              <span className="text-[10px] font-mono text-stone-400 block">Supabase User UUID</span>
-                              <span className="font-mono text-[10px] text-stone-600 break-all bg-stone-50 px-2 py-1 rounded block border border-stone-100 select-all">
-                                {user.id}
-                              </span>
-                            </div>
-                          )}
                         </div>
                         <div className="pt-2">
                           <button
@@ -983,40 +976,65 @@ export function CustomerPortalView({
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
-                      {wishlistedProducts.map((p) => (
-                        <div
-                          key={p.id}
-                          className="bg-white rounded-2xl sm:rounded-3xl overflow-hidden border border-stone-200 shadow-xs flex flex-row sm:flex-col justify-between"
-                        >
-                          <img src={p.image} alt={p.name} className="w-24 sm:w-full h-24 sm:h-40 object-cover shrink-0" />
-                          <div className="p-3 sm:p-4 flex-1 flex flex-col justify-between min-w-0">
-                            <div>
-                              <h4 className="font-serif font-bold text-stone-900 text-xs sm:text-base truncate">{p.name}</h4>
-                              <span className="text-xs sm:text-sm font-bold text-[#2D5A43]">${p.price.toFixed(2)}</span>
+                      {wishlistedProducts.map((p) => {
+                        const isOutOfStock = (p.stock ?? 0) <= 0;
+                        return (
+                          <div
+                            key={p.id}
+                            className={`bg-white rounded-2xl sm:rounded-3xl overflow-hidden border border-stone-200 shadow-xs flex flex-row sm:flex-col justify-between ${
+                              isOutOfStock ? 'opacity-95' : ''
+                            }`}
+                          >
+                            <div className="relative w-24 sm:w-full h-24 sm:h-40 shrink-0">
+                              <img
+                                src={p.image}
+                                alt={p.name}
+                                className={`w-full h-full object-cover ${isOutOfStock ? 'grayscale-[20%]' : ''}`}
+                              />
+                              {isOutOfStock && (
+                                <span className="absolute top-1.5 left-1.5 bg-rose-600 text-white text-[9px] uppercase font-extrabold px-1.5 py-0.5 rounded-full shadow-xs">
+                                  NOT AVAILABLE
+                                </span>
+                              )}
                             </div>
-                            <div className="flex items-center space-x-1.5 sm:space-x-2 mt-2 sm:mt-4">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  onAddToCart(p);
-                                  onToggleWishlist(p.id);
-                                }}
-                                className="flex-1 py-1.5 sm:py-2 bg-[#2D5A43] text-white text-[11px] sm:text-xs font-semibold rounded-full hover:bg-emerald-800 transition cursor-pointer truncate"
-                              >
-                                Move to Bag
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => onToggleWishlist(p.id)}
-                                className="p-1.5 sm:p-2 text-rose-600 hover:bg-rose-50 rounded-full transition cursor-pointer shrink-0"
-                                title="Remove from wishlist"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                            <div className="p-3 sm:p-4 flex-1 flex flex-col justify-between min-w-0">
+                              <div>
+                                <h4 className="font-serif font-bold text-stone-900 text-xs sm:text-base truncate">{p.name}</h4>
+                                <span className="text-xs sm:text-sm font-bold text-[#2D5A43]">${p.price.toFixed(2)}</span>
+                                {isOutOfStock && (
+                                  <span className="text-[10px] text-rose-600 font-bold block mt-0.5">Not Available</span>
+                                )}
+                              </div>
+                              <div className="flex items-center space-x-1.5 sm:space-x-2 mt-2 sm:mt-4">
+                                <button
+                                  type="button"
+                                  disabled={isOutOfStock}
+                                  onClick={() => {
+                                    if (isOutOfStock) return;
+                                    onAddToCart(p);
+                                    onToggleWishlist(p.id);
+                                  }}
+                                  className={`flex-1 py-1.5 sm:py-2 text-[11px] sm:text-xs font-semibold rounded-full transition truncate ${
+                                    isOutOfStock
+                                      ? 'bg-stone-200 text-rose-600 border border-stone-300 cursor-not-allowed'
+                                      : 'bg-[#2D5A43] text-white hover:bg-emerald-800 cursor-pointer'
+                                  }`}
+                                >
+                                  {isOutOfStock ? 'Not Available' : 'Move to Bag'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => onToggleWishlist(p.id)}
+                                  className="p-1.5 sm:p-2 text-rose-600 hover:bg-rose-50 rounded-full transition cursor-pointer shrink-0"
+                                  title="Remove from wishlist"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -1077,6 +1095,8 @@ export function CustomerPortalView({
               {activeModal === 'reviews' && (
                 <ReviewForm
                   products={products}
+                  order={selectedReviewOrder}
+                  orders={orders}
                   onSubmitReview={async (rev) => {
                     try {
                       if (onSubmitReview) {
@@ -1090,13 +1110,20 @@ export function CustomerPortalView({
                           userName: user.name,
                           productId: matchedProduct?.id || 'a0000001-0000-0000-0000-000000000001',
                           rating: rev.rating,
-                          comment: rev.comment
+                          comment: rev.comment,
+                          orderId: rev.orderId || selectedReviewOrder?.id
                         });
                       }
                       notify('Thank you for rating Ron’s Bloom Crafts! Review saved to database 💐');
                     } catch {
                       notify('Thank you for rating Ron’s Bloom Crafts! 💐');
                     }
+                    setSelectedReviewOrder(null);
+                    setActiveModal('completed');
+                    setActiveTab('completed');
+                  }}
+                  onCancel={() => {
+                    setSelectedReviewOrder(null);
                     setActiveModal('completed');
                     setActiveTab('completed');
                   }}
@@ -1258,6 +1285,7 @@ export function CustomerPortalView({
           </div>
         </div>
       )}
+
     </div>
   );
 }

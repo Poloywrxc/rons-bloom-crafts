@@ -29,6 +29,7 @@ interface EmailPreviewModalProps {
 }
 
 const EMAIL_TYPES: { id: OrderEmailType; label: string; badge: string; color: string }[] = [
+  { id: 'invoice', label: 'Order Invoice & Confirmed', badge: 'Official Invoice', color: 'bg-[#1b3b2b]' },
   { id: 'payment_verified', label: 'Payment Verified', badge: 'Verified & Cleared', color: 'bg-emerald-600' },
   { id: 'payment_rejected', label: 'Payment Rejected', badge: 'Verification Incomplete', color: 'bg-rose-600' },
   { id: 'floral_artistry', label: 'Floral Artistry', badge: 'Artistry in Progress', color: 'bg-[#2D5A43]' },
